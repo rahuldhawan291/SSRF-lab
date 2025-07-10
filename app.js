@@ -125,6 +125,8 @@ function lookupPromise(hostname) {
         dns.lookup(hostname, (err, address, _family) => {
             if (err) return reject(err);
             resolve(address);
+            setTimeout(resolve, 2000);
+
         });
     });
 }
@@ -252,7 +254,7 @@ router.get('/defense2', errorHandler(async function (req, res) {
  * @return {any}     description
  */
 
-router.get('/defens32', errorHandler(async function (req, res) {
+router.get('/defense3', errorHandler(async function (req, res) {
     const url = req.query.url,
         hostname = getHostname(url);
 
@@ -356,6 +358,11 @@ router.get('/defense4', async function (req, res) {
  */
 router.get('/defense5', function (req, res) {
     res.sendFile(path.join(__dirname, '/sitemap.html'));
+});
+
+router.get('/redirect', function (req, res) {
+    // Simple redirect to metadata service
+    res.redirect('http://169.254.169.254/latest/meta-data/');
 });
 
 // add the router

