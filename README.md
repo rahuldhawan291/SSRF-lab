@@ -1,112 +1,178 @@
-# SSRF-lab
+# 🔒 SSRF Lab – Real-World Bypasses for Modern Defenses
 
-In this Lab, there are four types of defense mechanisms available for developers to address the SSRF issue. However, each of these mitigations can be bypassed by more sophisticated techniques. The bypass methods range from basic encoding of private IP addresses to advanced techniques such as DNS rebinding or Time-of-Check to Time-of-Use (TOCTOU)
+This lab simulates how Server-Side Request Forgery (SSRF) vulnerabilities bypass common code-level defenses. It walks developers through:
 
-## Requirements
-* [AWS Metadata Mock service](https://github.com/aws/amazon-ec2-metadata-mock) (via Docker)
+* 5+ realistic defense implementations
+* Real-world payloads that bypass each defense
+* An interactive terminal-style UI to test, learn, and iterate
+* Optional AWS metadata emulation for cloud-realistic attacks
+
+---
+
+## 🧠 Project Philosophy
+
+> “There’s no bulletproof SSRF fix at the code level.”
+
+This lab **proves** that. While developers often rely on regex filters, DNS checks, or redirect blocking, these defenses are fragile and bypassable.
+
+To secure services against SSRF, you must combine:
+
+* ✅ Network segmentation
+* ✅ Metadata access controls
+* ✅ Header validation
+* ✅ DNS hardening
+* ✅ Application-layer isolation
+
+---
+
+## 💪 Requirements
+
+* [AWS EC2 Metadata Mock](https://github.com/aws/amazon-ec2-metadata-mock) (Docker)
 * Node.js and npm
-* Administrator/sudo access (for port 80 binding)
+* Admin/sudo privileges (to bind to port 80 and route metadata IPs)
 
-## Why AWS Metadata Mock service?
-The objective of this laboratory exercise is to circumvent the defense mechanism implemented for SSRF in order to gain access to the internal service. To make this lab realistic, I tried to use [AWS Metadata Mock service](https://github.com/aws/amazon-ec2-metadata-mock). You have the option to set up a simulated version of the metadata service on your local system. After installation, navigate to the lab's user interface (UI) and try accessing the metadata endpoint directly from within the UI.
+---
 
-## Why IP Routing to 169.254.169.254?
-In real cloud environments (AWS, GCP, Azure), the metadata service is always accessible at `169.254.169.254`. If we simply run the service on `localhost` or `127.0.0.1`, many of the SSRF bypass techniques demonstrated in this lab wouldn't work realistically.
+## 🌐 Why Route to `169.254.169.254`?
 
-For example, these bypass payloads are specifically crafted for `169.254.169.254`:
-- `http://2852039166/` (decimal encoding of 169.254.169.254)
-- `http://0xa9fea9fe/` (hex encoding of 169.254.169.254)
-- `http://169.254.169.254.nip.io/` (DNS bypass)
-- `http://[::ffff:169.254.169.254]/` (IPv6 representation)
+In AWS, GCP, and Azure, the metadata service lives at `http://169.254.169.254/`. This lab simulates that by running a mock metadata server on the **same IP**, allowing you to test realistic payloads like:
 
-By configuring your system to route `169.254.169.254` to the metadata mock service, you get an authentic SSRF testing experience that mirrors real-world cloud environments.
+```
+http://2852039166/                       # Decimal
+http://169.254.169.254.nip.io/           # DNS
+http://[::ffff:169.254.169.254]/         # IPv6
+http://0xa9fea9fe/                       # Hex
+```
 
-## Installation
+These **will not work** unless `169.254.169.254` is routed locally — which this lab sets up.
+
+---
+
+## 🚀 Installation
 
 ### Step 1: Setup AWS Metadata Mock Service
 
-#### For Linux/Mac Users:
-```bash
-# Add IP alias to loopback interface
-sudo ifconfig lo0 alias 169.254.169.254/32  # Mac
-# OR
-sudo ip addr add 169.254.169.254/32 dev lo   # Linux
+#### 🏧 Linux / 🍎 macOS:
 
-# Run the metadata service (requires sudo for port 80)
+```bash
+# Add IP alias for metadata
+sudo ifconfig lo0 alias 169.254.169.254/32        # macOS
+# or
+sudo ip addr add 169.254.169.254/32 dev lo        # Linux
+
+# Pull and run metadata mock server
 docker pull public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
 sudo docker run -it --rm -p 169.254.169.254:80:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
 ```
 
-#### For Windows Users:
-Windows requires additional network configuration to properly route traffic to 169.254.169.254.
+#### 🪠 Windows:
 
-1. **Open Command Prompt or PowerShell as Administrator**
+```powershell
+# Run PowerShell as Administrator
 
-2. **Configure Windows networking:**
-   ```batch
-   REM Add the metadata IP to loopback adapter
-   netsh interface ip add address "Loopback Pseudo-Interface 1" 169.254.169.254 255.255.255.255
+# Add loopback IP
+netsh interface ip add address "Loopback Pseudo-Interface 1" 169.254.169.254 255.255.255.255
 
-   REM Create port forwarding rule
-   netsh interface portproxy add v4tov4 listenaddress=169.254.169.254 listenport=80 connectaddress=127.0.0.1 connectport=1338
-   ```
+# Setup port proxy
+netsh interface portproxy add v4tov4 listenaddress=169.254.169.254 listenport=80 connectaddress=127.0.0.1 connectport=1338
 
-3. **Run the metadata service:**
-   ```batch
-   docker pull public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
-   docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
-   ```
+# Start metadata service
+docker pull public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
+docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
+```
 
-4. **Verify setup:**
-   ```batch
-   REM This should return metadata
-   curl http://169.254.169.254/latest/meta-data/
-   ```
+💪 Test it:
 
-**To clean up after the lab (Windows):**
-```batch
+```bash
+curl http://169.254.169.254/latest/meta-data/
+```
+
+🚽 Cleanup (Windows only):
+
+```powershell
 netsh interface portproxy delete v4tov4 listenaddress=169.254.169.254 listenport=80
 netsh interface ip delete address "Loopback Pseudo-Interface 1" 169.254.169.254
 ```
 
+---
+
 ### Step 2: Start the SSRF Lab
 
-In a new terminal:
 ```bash
 npm install
 node app.js
 ```
 
-## Accessing the UI
+---
+
+## 💻 Access the Lab
+
+> [http://localhost:3000/](http://localhost:3000/)
+
+Try entering:
 
 ```
-http://localhost:3000/
+http://169.254.169.254/latest/meta-data/
 ```
 
-## Testing the Setup
+...in the **"No Defense"** tab and watch metadata leak!
 
-Once both services are running, you should be able to:
-1. Access the lab at `http://localhost:3000/`
-2. Try the payload `http://169.254.169.254/latest/meta-data/` in the "No Defense" section
-3. See actual AWS-style metadata responses
+---
 
-## Troubleshooting
+## 🪨 Defense Scenarios Covered
 
-### Windows: "Can't bind to specified endpoint" error
-- Make sure you ran the netsh commands as Administrator
-- Check if another service is using port 80: `netstat -ano | findstr :80`
+Each tab represents a real-world SSRF mitigation — and its bypass:
 
-### "Connection refused" errors
-- Ensure the metadata mock service is running
-- Verify the IP configuration with `ipconfig /all` (Windows) or `ifconfig` (Linux/Mac)
+| Tab                             | Defense Technique              | Bypass Exploit                     |
+| ------------------------------- | ------------------------------ | ---------------------------------- |
+| 🔓 No Defense                   | None                           | Direct metadata access             |
+| 🛡️ IP Blacklisting             | StartsWith / regex checks      | Encodings, IPv6, obfuscation       |
+| 📁 Library Filters              | `isPrivateIP()` or URL checks  | DNS pinning                        |
+| 📡 DNS Resolution               | Resolved IP checking           | Redirect to internal after pass    |
+| ⏱️ TOCTOU / No Redirect Follows | Pre-check + axios redirect off | DNS rebinding                      |
+| 🔐 Comprehensive Defense        | Layered controls               | Protocol smuggling, zero-day paths |
 
-### Port 80 permission denied
-- On Linux/Mac, use `sudo` when running the docker command
-- On Windows, run as Administrator
+---
 
-## Using Postman Collection
-To gain a comprehensive understanding of the bypass techniques for each defense mechanism, you can utilize the provided Postman Collection located [here](Postman%20Collection/SSRF-Demo.postman_collection.json). This collection serves as a valuable resource for comprehending the intricacies and rationale behind each defense and its potential bypass. 
+## 📊 Troubleshooting
 
-The detailed documentation within the collection explains the defenses, their corresponding bypasses, and even includes relevant payload examples. Consider this collection as a comprehensive solution guide for completing this lab successfully.
+| Issue                            | Fix                                                 |                         |
+| -------------------------------- | --------------------------------------------------- | ----------------------- |
+| ❌ "Permission denied on port 80" | Use `sudo` or run terminal as Administrator         |                         |
+| ⚠️ "Can't bind" (Windows)        | Ensure portproxy setup and admin privileges         |                         |
+| 🔍 "Connection refused"          | Check if metadata service is running and accessible |                         |
+| 🚧 Port already in use           | \`netstat -ano                                      | findstr :80\` (Windows) |
 
-**PS: Note that this laboratory is currently a work in progress.**
+---
+
+## 💾 Postman Collection (Optional)
+
+Explore SSRF payloads and bypasses using the pre-built Postman collection:
+**`Postman Collection/SSRF-Demo.postman_collection.json`**
+
+This includes:
+
+* Pre-filled requests for each lab tab
+* Payload commentary
+* Defense breakdowns
+
+---
+
+## ✨ Lab Status
+
+✅ **Phase 1 Complete**:
+
+* All major SSRF defenses implemented and bypassed
+
+🔄 **Phase 2 Planned**:
+
+* IMDSv2 & Header Injection bypasses
+* Lambda container edge cases
+* SSRF-to-RCE chaining scenarios
+
+---
+
+Made with ❤️ by [@rahuldhawan291](https://www.linkedin.com/in/rahuldhawan291/)
+
+```
+```
