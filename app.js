@@ -6,7 +6,7 @@ const express = require('express'),
     cors = require('cors'),
     axios = require('axios'),
     path = require('path'),
-    ip = require('ip'),
+    ipaddr = require('ipaddr.js'),
     dns = require('dns'),
     isValidDomain = require('is-valid-domain'),
 
@@ -20,7 +20,7 @@ app.use(cors());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(express.static(__dirname+'/public/assets'));
-
+app.use(express.static(path.join(__dirname, 'public')));
 
 function errorHandler (asyncRouteHandler) {
     return async function (req, res, next) {
@@ -92,7 +92,10 @@ const privateCIDRs = [
     '224.0.0.0/4',
     '240.0.0.0/4',
     '255.255.255.255/32'
-].map(ip.cidrSubnet);
+].map(cidr => {
+    const [range, bits] = cidr.split('/');
+    return { range: ipaddr.parse(range), bits: parseInt(bits, 10) };
+});
 
 /**
  * isPrivateIP - description
@@ -100,9 +103,15 @@ const privateCIDRs = [
  * @param  {string} ip_addr description
  * @return {boolean}         description
  */
-function isPrivateIP (ip_addr) {
-    // Directly checks the IP address against privateCIDR
-    return privateCIDRs.some((cidr) => { return cidr.contains(ip_addr); });
+function isPrivateIP(ipStr) {
+    if (!ipaddr.isValid(ipStr)) return false;
+
+    const addr = ipaddr.parse(ipStr);
+    if (addr.kind() !== 'ipv4') return false; // Assuming only IPv4 for now
+
+    return privateCIDRs.some(({ range, bits }) => {
+        return addr.match(range, bits);
+    });
 }
 
 /**
@@ -111,12 +120,11 @@ function isPrivateIP (ip_addr) {
  * @param  {string} hostname description
  * @return {object}          description
  */
-function lookupPromise (hostname) {
+function lookupPromise(hostname) {
     return new Promise((resolve, reject) => {
         dns.lookup(hostname, (err, address, _family) => {
-            if (err) { reject(err); }
+            if (err) return reject(err);
             resolve(address);
-            setTimeout(resolve, 2000);
         });
     });
 }
@@ -187,12 +195,16 @@ router.get('/defense1', errorHandler(async function (req, res) {
     }
 
     // Match the host part against the list of blacklist IP address.
+    // Naive blacklist, bypassable using domain names or encoded IPs
     const blackListIps = ['127.', '0.', '192.168', '10.', '169.254', '172.'],
         isBlacklisted = blackListIps.some((pattern) => { return hostname.startsWith(pattern); });
 
     // make http request only if match pass
     if (isBlacklisted) {
-        return res.status(423).send('Action Blocked! \n\n You are trying to access restricted IP address');
+        return res.status(423).json({
+            message: 'Blocked: IP address is within restricted private range.',
+            tip: 'Avoid using local IPs like 127.0.0.1, 169.254.x.x, or internal subnets.'
+        });
     }
 
     // make a request to user provided url
@@ -217,7 +229,7 @@ router.get('/defense2', errorHandler(async function (req, res) {
     }
 
     // check if IP address is valid
-    if (ip.isV4Format(hostname) && isPrivateIP(hostname)) {
+    if (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {
         return res.status(423).send('Action Blocked! \n\n You are trying to access restricted IP address');
     }
 
@@ -239,7 +251,8 @@ router.get('/defense2', errorHandler(async function (req, res) {
  * @param  {Object} res description
  * @return {any}     description
  */
-router.get('/defense3', async function (req, res) {
+
+router.get('/defens32', errorHandler(async function (req, res) {
     const url = req.query.url,
         hostname = getHostname(url);
 
@@ -248,7 +261,7 @@ router.get('/defense3', async function (req, res) {
     }
 
     // check if IP address is valid
-    if (ip.isV4Format(hostname) && isPrivateIP(hostname)) {
+    if (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {
         return res.status(423).send('Action Blocked! \n\n You are trying to access restricted IP address');
     }
 
@@ -277,7 +290,7 @@ router.get('/defense3', async function (req, res) {
     const response = await axios.get(url);
 
     return res.send(response.data);
-});
+}));
 
 /**
  * anonymous function - defense4
@@ -295,7 +308,7 @@ router.get('/defense4', async function (req, res) {
     }
 
     // check if IP address is valid
-    if (ip.isV4Format(hostname) && isPrivateIP(hostname)) {
+    if (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {
         return res.status(423).send('Action Blocked! \n\n You are trying to access restricted IP address');
     }
 
