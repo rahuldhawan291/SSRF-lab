@@ -63,6 +63,9 @@ sudo ip addr add 169.254.169.254/32 dev lo        # Linux
 # Pull and run metadata mock server
 docker pull public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
 sudo docker run -it --rm -p 169.254.169.254:80:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
+
+# To run docker container with V2 IMDS ONLY
+sudo docker run -it --rm -p 169.254.169.254:80:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0 --imdsv2 
 ```
 
 #### 🪠 Windows:
@@ -79,6 +82,9 @@ netsh interface portproxy add v4tov4 listenaddress=169.254.169.254 listenport=80
 # Start metadata service
 docker pull public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
 docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0
+
+# To run docker container with V2 IMDS ONLY
+docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0 --imdsv2 
 ```
 
 💪 Test it:
@@ -166,7 +172,7 @@ This includes:
 
 🔄 **Phase 2 Planned**:
 
-* IMDSv2 & Header Injection bypasses
+* Header Injection bypasses
 * Lambda container edge cases
 * SSRF-to-RCE chaining scenarios
 
