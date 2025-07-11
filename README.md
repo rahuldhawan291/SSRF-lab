@@ -130,7 +130,7 @@ Each tab represents a real-world SSRF mitigation — and its bypass:
 | 📁 Library Filters              | `isPrivateIP()` or URL checks  | DNS pinning                        |
 | 📡 DNS Resolution               | Resolved IP checking           | Redirect to internal after pass    |
 | ⏱️ TOCTOU / No Redirect Follows | Pre-check + axios redirect off | DNS rebinding                      |
-| 🔐 Comprehensive Defense        | Layered controls               | Protocol smuggling, zero-day paths |
+| 🔐 IMDSv2 protection Bypass     | Blocking Metadata IP           | SSRF Chaining Attack |
 
 ---
 

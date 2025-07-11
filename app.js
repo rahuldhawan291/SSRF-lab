@@ -365,6 +365,92 @@ router.get('/redirect', function (req, res) {
     res.redirect('http://169.254.169.254/latest/meta-data/');
 });
 
+// Simulate an internal service that can make arbitrary HTTP requests
+router.post('/internal/gadgets/makeRequest', async function (req, res) {
+    // This simulates an internal service like Atlassian Gadgets, Jenkins, etc.
+    const { url, httpMethod, headers, body } = req.body;
+    
+    console.log('[GADGET SERVICE] Received request to proxy:', { url, httpMethod });
+    
+    try {
+        // Parse custom headers
+        const customHeaders = {};
+        if (headers) {
+            headers.split('&').forEach(header => {
+                const [key, value] = header.split('=');
+                if (key && value) {
+                    customHeaders[key] = decodeURIComponent(value);
+                }
+            });
+        }
+        
+        const config = {
+            method: httpMethod || 'GET',
+            url: url,
+            headers: customHeaders,
+            data: body,
+            timeout: 5000
+        };
+        
+        console.log('[GADGET SERVICE] Proxying request with headers:', customHeaders);
+        
+        const response = await axios(config);
+        
+        // Return the proxied response
+        res.json({
+            status: 'success',
+            data: response.data,
+            responseHeaders: response.headers
+        });
+        
+    } catch (error) {
+        console.log('[GADGET SERVICE] Error:', error.message);
+        res.status(500).json({
+            status: 'error',
+            message: error.message,
+            details: error.response?.data
+        });
+    }
+});
+
+// Defense 6 endpoint
+router.get('/defense6', errorHandler(async function (req, res) {
+    const url = req.query.url,
+        hostname = getHostname(url);
+
+    if (!check_proto.test(url)) {
+        return res.status(401).send('Invalid URL Format. Please specify Protocol (HTTP OR HTTPS)');
+    }
+
+    // Block direct metadata access
+    const metadataIPs = ['169.254.169.254', '100.100.100.200', 'fd00:ec2::254'];
+    if (metadataIPs.includes(hostname)) {
+        return res.status(423).send('Action Blocked! Direct metadata access is forbidden with IMDSv2 protection');
+    }
+
+    // Check for metadata paths
+    const parsedUrl = new URL(url);
+    if (parsedUrl.pathname.includes('/latest/')) {
+        return res.status(423).send('Action Blocked! Metadata service paths are blocked');
+    }
+
+    // Standard private IP checks
+    if (ipaddr.isValid(hostname) && isPrivateIP(hostname)) {
+        return res.status(423).send('Action Blocked! Private IP access denied');
+    }
+
+    // Make request without metadata headers
+    const response = await axios.get(url, {
+        maxRedirects: 0,
+        headers: {
+            'X-aws-ec2-metadata-token': undefined,
+            'X-aws-ec2-metadata-token-ttl-seconds': undefined
+        }
+    });
+
+    return res.send(response.data);
+}));
+
 // add the router
 app.use('/', router);
 app.listen(port, () => { return console.log(`Hello world app listening on port ${port}!`); });
